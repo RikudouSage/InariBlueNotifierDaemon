@@ -1,0 +1,3 @@
+access:
+  i2c-dev:
+    - /usr/bin/inari-blue-notifier-daemon

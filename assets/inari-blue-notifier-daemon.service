@@ -1,0 +1,13 @@
+[Unit]
+Description=Inari Blue Notifier Daemon
+After=user-session.target
+After=dbus.socket
+Requires=dbus.socket
+
+[Service]
+ExecStart=/usr/bin/inari-blue-notifier-daemon
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=post-user-session.target
