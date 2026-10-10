@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -146,16 +148,34 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 	default:
 		_, wasIncoming = receiver.incomingCalls[signal.Path]
 		delete(receiver.incomingCalls, signal.Path)
+
+		// /calls/active is the voicecall manager's canonical active-call
+		// object. Once it becomes idle, no call can still be ringing. Clear
+		// any paths left behind by a missed or differently-addressed signal.
+		if signal.Path == activeVoiceCallPath && status == voiceCallStatusIdle {
+			receiver.incomingCalls = make(map[dbus.ObjectPath]struct{})
+			action = "cleared-active-call"
+		}
 	}
 
 	log.Printf(
-		"call status: path=%s status=%d action=%s was_incoming=%t incoming_calls=%d",
+		"call status: path=%s status=%d action=%s was_incoming=%t incoming_calls=%d paths=%s",
 		signal.Path,
 		status,
 		action,
 		wasIncoming,
 		len(receiver.incomingCalls),
+		receiver.incomingCallPaths(),
 	)
+}
+
+func (receiver *controller) incomingCallPaths() string {
+	paths := make([]string, 0, len(receiver.incomingCalls))
+	for path := range receiver.incomingCalls {
+		paths = append(paths, string(path))
+	}
+	sort.Strings(paths)
+	return strings.Join(paths, ",")
 }
 
 func parseCallStatus(body []any) (int, error) {

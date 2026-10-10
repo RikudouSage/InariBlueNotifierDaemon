@@ -11,7 +11,9 @@ import (
 const (
 	voiceCallInterface     = "org.nemomobile.voicecall.VoiceCall"
 	voiceCallStatusChanged = voiceCallInterface + ".statusChanged"
+	activeVoiceCallPath    = "/calls/active"
 
+	voiceCallStatusIdle     = 0
 	voiceCallStatusIncoming = 5
 )
 
