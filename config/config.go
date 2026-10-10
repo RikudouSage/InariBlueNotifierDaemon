@@ -1,25 +1,28 @@
 package config
 
 import (
-	"InariBlueNotifier/led"
-	"bytes"
+	"InariBlueNotifier/patterns"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/samber/lo"
 	"gopkg.in/ini.v1"
 )
 
 const (
-	callPatternKey = "call"
+	callPatternKey        = "call"
+	storedPatternsSection = "storedPatterns"
+	activePatternsSection = "activePatterns"
 )
 
 type Config struct {
 	cfgFilePath string
 
-	CallPattern led.Pattern
+	StoredPatterns map[string]patterns.Pattern
+	CallPattern    patterns.Pattern
 }
 
 func New() (*Config, error) {
@@ -32,7 +35,7 @@ func New() (*Config, error) {
 		cfgDir = filepath.Join(cfgDir, ".config")
 	}
 	cfgDir = filepath.Join(cfgDir, "dev.rikudou", "inari-blue-notifier")
-	cfgFilePath := filepath.Join(cfgDir, "config.ini")
+	cfgFilePath := filepath.Join(cfgDir, "config_v2.ini")
 	cfgFile, err := os.Open(cfgFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("could not open config file: %w", err)
@@ -41,48 +44,84 @@ func New() (*Config, error) {
 		defer cfgFile.Close()
 	}
 
+	instance := &Config{
+		cfgFilePath:    cfgFilePath,
+		StoredPatterns: make(map[string]patterns.Pattern),
+	}
+
+	changedConfig := false
+
 	var cfgRaw *ini.File
 	if cfgFile != nil {
 		cfgRaw, err = ini.Load(cfgFile)
 	} else {
 		cfgRaw, err = ini.Load(make([]byte, 0))
+		if err != nil {
+			return nil, fmt.Errorf("could not create empty config file: %w", err)
+		}
+
+		initialPatterns := []patterns.Pattern{
+			patterns.SlowBlink,
+			patterns.MediumLengthBreath,
+		}
+
+		instance.StoredPatterns = lo.KeyBy(initialPatterns, func(item patterns.Pattern) string {
+			return item.Name
+		})
+
+		changedConfig = true
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not load config file: %w", err)
 	}
-	patterns := cfgRaw.Section("patterns")
+	activePatterns := cfgRaw.Section(activePatternsSection)
 
-	parsePattern := func(raw string) (led.Pattern, error) {
-		var result led.Pattern
+	parsePattern := func(raw string) (patterns.Pattern, error) {
+		var result patterns.Pattern
 		if err := json.Unmarshal([]byte(raw), &result); err != nil {
-			return led.Pattern{}, fmt.Errorf("failed parsing pattern json: %w", err)
+			return patterns.Pattern{}, fmt.Errorf("failed parsing pattern json: %w", err)
 		}
 
 		if err = result.Validate(); err != nil {
-			return led.Pattern{}, fmt.Errorf("failed validating pattern: %w", err)
+			return patterns.Pattern{}, fmt.Errorf("failed validating pattern: %w", err)
 		}
 
 		return result, nil
 	}
 
-	instance := &Config{
-		cfgFilePath: cfgFilePath,
-	}
-
-	changed := false
-	if callPatternRaw := patterns.Key(callPatternKey).String(); callPatternRaw != "" {
+	if callPatternRaw := activePatterns.Key(callPatternKey).String(); callPatternRaw != "" {
 		callPattern, err := parsePattern(callPatternRaw)
 		if err != nil {
-			cfgRaw.Section("patterns").DeleteKey(callPatternKey)
-			changed = true
+			instance.CallPattern = patterns.DefaultCallPattern
+			changedConfig = true
 		} else {
 			instance.CallPattern = callPattern
 		}
+	} else {
+		instance.CallPattern = patterns.DefaultCallPattern
+		changedConfig = true
 	}
 
-	if changed {
+	storedPatterns := cfgRaw.Section(storedPatternsSection)
+	for _, value := range storedPatterns.Keys() {
+		pattern, err := parsePattern(value.String())
+		if err != nil {
+			changedConfig = true
+			continue
+		}
+		if err = pattern.Validate(); err != nil {
+			changedConfig = true
+			continue
+		}
+
+		instance.StoredPatterns[pattern.Name] = pattern
+	}
+
+	if changedConfig {
 		_ = cfgFile.Close()
-		_ = cfgRaw.SaveTo(cfgFilePath)
+		if err = instance.Save(); err != nil {
+			return nil, fmt.Errorf("could not save config file: %w", err)
+		}
 	}
 
 	return instance, nil
@@ -93,20 +132,11 @@ func (receiver *Config) Save() error {
 		return errors.New("no config file set, please construct using config.New()")
 	}
 
-	if err := receiver.CallPattern.Validate(); err != nil {
-		return fmt.Errorf("the call pattern is not valid: %w", err)
-	}
-	callPatternJson, err := json.Marshal(receiver.CallPattern)
-	if err != nil {
-		return fmt.Errorf("could not marshal call pattern: %w", err)
-	}
-	buf := bytes.NewBuffer(nil)
-	err = json.Compact(buf, callPatternJson)
-	if err != nil {
-		return fmt.Errorf("could not compact call pattern: %w", err)
+	activePatterns := map[string]patterns.Pattern{
+		callPatternKey: receiver.CallPattern,
 	}
 
-	if _, err = os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
 		if err = os.MkdirAll(filepath.Dir(receiver.cfgFilePath), 0700); err != nil {
 			return fmt.Errorf("could not create directory %s: %w", filepath.Dir(receiver.cfgFilePath), err)
 		}
@@ -122,7 +152,23 @@ func (receiver *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("could not load config file: %w", err)
 	}
-	cfgRaw.Section("patterns").Key(callPatternKey).SetValue(string(buf.Bytes()))
+
+	for name, pattern := range activePatterns {
+		if err := pattern.Validate(); err != nil {
+			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
+		}
+		patternJson := lo.Must(json.Marshal(pattern))
+		cfgRaw.Section(activePatternsSection).Key(name).SetValue(string(patternJson))
+	}
+
+	for name, pattern := range receiver.StoredPatterns {
+		if err := pattern.Validate(); err != nil {
+			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
+		}
+		patternJson := lo.Must(json.Marshal(pattern))
+		cfgRaw.Section(storedPatternsSection).Key(name).SetValue(string(patternJson))
+	}
+
 	_ = cfgFile.Close()
 	if err = cfgRaw.SaveTo(receiver.cfgFilePath); err != nil {
 		return fmt.Errorf("could not save config file: %w", err)

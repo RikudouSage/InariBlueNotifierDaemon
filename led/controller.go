@@ -1,6 +1,7 @@
 package led
 
 import (
+	"InariBlueNotifier/patterns"
 	"context"
 	"errors"
 	"fmt"
@@ -45,7 +46,6 @@ const (
 	allChannelsEnabled  byte = 0x07
 	allChannelsDisabled byte = 0x00
 
-	maxTimingDuration      = 7031250 * time.Microsecond
 	controllerRestartDelay = 200 * time.Millisecond
 )
 
@@ -58,69 +58,6 @@ const (
 	Breathing
 	Blinking
 )
-
-type Pattern struct {
-	Name string `json:"name"`
-
-	Rise       time.Duration `json:"rise"`
-	Hold       time.Duration `json:"hold"`
-	Decay      time.Duration `json:"decay"`
-	Off        time.Duration `json:"off"`
-	Delay      time.Duration `json:"delay"`
-	Repeat     uint8         `json:"repeat"`
-	Brightness uint8         `json:"brightness"`
-}
-
-func (receiver *Pattern) Validate() error {
-	if receiver.Name == "" {
-		return errors.New("empty name")
-	}
-
-	if receiver.Repeat > 15 {
-		return errors.New("repeat must be between 0 and 15")
-	}
-
-	durations := map[string]time.Duration{
-		"rise":  receiver.Rise,
-		"hold":  receiver.Hold,
-		"decay": receiver.Decay,
-		"off":   receiver.Off,
-		"delay": receiver.Delay,
-	}
-
-	for name, duration := range durations {
-		if duration < 0 || duration > maxTimingDuration {
-			return fmt.Errorf(
-				"%s must be between 0 and %s",
-				name,
-				maxTimingDuration,
-			)
-		}
-	}
-
-	return nil
-}
-
-func DefaultNotificationPattern() Pattern {
-	return Pattern{
-		Name:       "Default notification pattern",
-		Rise:       1125 * time.Millisecond,
-		Hold:       1125 * time.Millisecond,
-		Decay:      1125 * time.Millisecond,
-		Off:        1125 * time.Millisecond,
-		Repeat:     0,
-		Brightness: 255,
-	}
-}
-
-func DefaultCallPattern() Pattern {
-	return Pattern{
-		Name:       "Default call pattern",
-		Hold:       280 * time.Millisecond,
-		Off:        280 * time.Millisecond,
-		Brightness: 255,
-	}
-}
 
 type Controller interface {
 	SetState(state State) error
@@ -135,8 +72,8 @@ type controller struct {
 	busConnection *dbus.Conn
 	deviceFile    *os.File
 
-	notificationPattern Pattern
-	callPattern         Pattern
+	notificationPattern patterns.Pattern
+	callPattern         patterns.Pattern
 
 	currentState State
 	stateApplied bool
@@ -157,15 +94,15 @@ type controller struct {
 func New(connection *dbus.Conn) (Controller, error) {
 	return NewWithPatterns(
 		connection,
-		DefaultNotificationPattern(),
-		DefaultCallPattern(),
+		patterns.MediumLengthBreath,
+		patterns.SlowBlink,
 	)
 }
 
 func NewWithPatterns(
 	connection *dbus.Conn,
-	notificationPattern Pattern,
-	callPattern Pattern,
+	notificationPattern patterns.Pattern,
+	callPattern patterns.Pattern,
 ) (Controller, error) {
 	return NewWithContext(
 		context.Background(),
@@ -178,8 +115,8 @@ func NewWithPatterns(
 func NewWithContext(
 	ctx context.Context,
 	connection *dbus.Conn,
-	notificationPattern Pattern,
-	callPattern Pattern,
+	notificationPattern patterns.Pattern,
+	callPattern patterns.Pattern,
 ) (Controller, error) {
 	if err := notificationPattern.Validate(); err != nil {
 		return nil, fmt.Errorf("notification pattern: %w", err)
@@ -360,7 +297,7 @@ func (receiver *controller) disableLEDs() error {
 	)
 }
 
-func (receiver *controller) configureAnimation(pattern Pattern) error {
+func (receiver *controller) configureAnimation(pattern patterns.Pattern) error {
 	if err := pattern.Validate(); err != nil {
 		return err
 	}
