@@ -10,11 +10,23 @@ import (
 )
 
 const (
-	systemdService   = "org.freedesktop.systemd1"
-	systemdPath      = "/org/freedesktop/systemd1"
-	systemdInterface = "org.freedesktop.systemd1.Manager"
+	dbusService                = "org.freedesktop.DBus"
+	dbusPath                   = "/org/freedesktop/DBus"
+	dbusInterface              = "org.freedesktop.DBus"
+	dbusObjectManagerInterface = "org.freedesktop.DBus.ObjectManager"
 
-	ledService = "toh-leds.service"
+	systemdService             = "org.freedesktop.systemd1"
+	systemdPath                = "/org/freedesktop/systemd1"
+	systemdInterface           = "org.freedesktop.systemd1.Manager"
+	systemdUnitInterface       = "org.freedesktop.systemd1.Unit"
+	systemdPropertiesInterface = "org.freedesktop.DBus.Properties"
+
+	jollaLedService = "toh-leds.service"
+
+	symbiosisService   = "org.sailfishos.tohd1"
+	symbiosisRootPath  = "/org/sailfishos/tohd1"
+	symbiosisObject    = "/org/sailfishos/tohd1/toh"
+	symbiosisInterface = "org.sailfishos.tohd1.Toh"
 )
 
 type Checker interface {
@@ -23,38 +35,81 @@ type Checker interface {
 }
 
 type checker struct {
-	mutex      sync.Mutex
-	connection *dbus.Conn
+	mutex             sync.Mutex
+	sessionConnection *dbus.Conn
+	systemConnection  *dbus.Conn
 }
 
-func NewChecker(connection *dbus.Conn) Checker {
+func NewChecker(sessionConnection, systemConnection *dbus.Conn) Checker {
 	return &checker{
-		connection: connection,
+		sessionConnection: sessionConnection,
+		systemConnection:  systemConnection,
 	}
 }
 
-func (receiver *checker) Available(ctx context.Context) (bool, error) {
-	var state string
-
-	err := receiver.connection.Object(
+func (receiver *checker) ledServiceObject(ctx context.Context) (dbus.ObjectPath, error) {
+	var unitPath dbus.ObjectPath
+	err := receiver.sessionConnection.Object(
 		systemdService,
 		systemdPath,
 	).CallWithContext(
 		ctx,
-		systemdInterface+".GetUnitFileState",
+		systemdInterface+".LoadUnit",
 		0,
-		ledService,
-	).Store(&state)
-
+		jollaLedService,
+	).Store(&unitPath)
 	if err != nil {
-		return false, fmt.Errorf(
-			"get %s unit file state: %w",
-			ledService,
-			err,
-		)
+		return "", fmt.Errorf("load %s unit: %w", jollaLedService, err)
 	}
 
-	return state == "masked" || state == "masked-runtime", nil
+	return unitPath, nil
+}
+
+// Available reports whether the original LED service is not running and
+// Symbiosis has detected and published a TOH. Both conditions are required
+// before this daemon may control the LEDs.
+func (receiver *checker) Available(ctx context.Context) (bool, error) {
+	unitPath, err := receiver.ledServiceObject(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	stateVariant, err := receiver.sessionConnection.Object(
+		systemdService,
+		unitPath,
+	).GetProperty(systemdUnitInterface + ".ActiveState")
+	if err != nil {
+		return false, fmt.Errorf("get %s active state: %w", jollaLedService, err)
+	}
+	state, ok := stateVariant.Value().(string)
+	if !ok {
+		return false, fmt.Errorf("read %s active state: unexpected type %T", jollaLedService, stateVariant.Value())
+	}
+	if state != "inactive" && state != "failed" {
+		return false, nil
+	}
+
+	objects := map[dbus.ObjectPath]map[string]map[string]dbus.Variant{}
+
+	err = receiver.systemConnection.Object(
+		symbiosisService,
+		symbiosisRootPath,
+	).CallWithContext(
+		ctx,
+		dbusObjectManagerInterface+".GetManagedObjects",
+		0,
+	).Store(&objects)
+	if err != nil {
+		return false, fmt.Errorf("get managed Symbiosis objects: %w", err)
+	}
+
+	interfaces, exists := objects[symbiosisObject]
+	if !exists {
+		return false, nil
+	}
+
+	_, exists = interfaces[symbiosisInterface]
+	return exists, nil
 }
 
 func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
@@ -62,60 +117,94 @@ func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
 	defer receiver.mutex.Unlock()
 
 	if changes == nil {
-		return errors.New("onChange cannot be nil")
+		return errors.New("changes cannot be nil")
 	}
-
-	signals := make(chan *dbus.Signal, 16)
-	receiver.connection.Signal(signals)
-	defer receiver.connection.RemoveSignal(signals)
-
-	err := receiver.connection.AddMatchSignal(
-		dbus.WithMatchObjectPath(
-			systemdPath,
-		),
-		dbus.WithMatchInterface(systemdInterface),
-		dbus.WithMatchMember("UnitFilesChanged"),
-	)
-
+	unitPath, err := receiver.ledServiceObject(ctx)
 	if err != nil {
-		return fmt.Errorf(
-			"subscribe to systemd unit changes: %w",
-			err,
-		)
+		return err
 	}
 
-	defer receiver.connection.RemoveMatchSignal(
-		dbus.WithMatchObjectPath(
-			systemdPath,
-		),
-		dbus.WithMatchInterface(systemdInterface),
-		dbus.WithMatchMember("UnitFilesChanged"),
-	)
+	sessionSignals := make(chan *dbus.Signal, 16)
+	systemSignals := make(chan *dbus.Signal, 16)
+	receiver.sessionConnection.Signal(sessionSignals)
+	receiver.systemConnection.Signal(systemSignals)
+	defer receiver.sessionConnection.RemoveSignal(sessionSignals)
+	defer receiver.systemConnection.RemoveSignal(systemSignals)
+
+	ownerMatch := []dbus.MatchOption{
+		dbus.WithMatchSender(dbusService),
+		dbus.WithMatchObjectPath(dbusPath),
+		dbus.WithMatchInterface(dbusInterface),
+		dbus.WithMatchMember("NameOwnerChanged"),
+		dbus.WithMatchArg(0, symbiosisService),
+	}
+	addedMatch := []dbus.MatchOption{
+		dbus.WithMatchObjectPath(symbiosisRootPath),
+		dbus.WithMatchInterface(dbusObjectManagerInterface),
+		dbus.WithMatchMember("InterfacesAdded"),
+	}
+	removedMatch := []dbus.MatchOption{
+		dbus.WithMatchObjectPath(symbiosisRootPath),
+		dbus.WithMatchInterface(dbusObjectManagerInterface),
+		dbus.WithMatchMember("InterfacesRemoved"),
+	}
+	unitStateMatch := []dbus.MatchOption{
+		dbus.WithMatchObjectPath(unitPath),
+		dbus.WithMatchInterface(systemdPropertiesInterface),
+		dbus.WithMatchMember("PropertiesChanged"),
+		dbus.WithMatchArg(0, systemdUnitInterface),
+	}
+
+	if err := receiver.systemConnection.AddMatchSignal(ownerMatch...); err != nil {
+		return fmt.Errorf("subscribe to Symbiosis owner changes: %w", err)
+	}
+	defer receiver.systemConnection.RemoveMatchSignal(ownerMatch...)
+
+	if err := receiver.systemConnection.AddMatchSignal(addedMatch...); err != nil {
+		return fmt.Errorf("subscribe to TOH additions: %w", err)
+	}
+	defer receiver.systemConnection.RemoveMatchSignal(addedMatch...)
+
+	if err := receiver.systemConnection.AddMatchSignal(removedMatch...); err != nil {
+		return fmt.Errorf("subscribe to TOH removals: %w", err)
+	}
+	defer receiver.systemConnection.RemoveMatchSignal(removedMatch...)
+
+	if err := receiver.sessionConnection.AddMatchSignal(unitStateMatch...); err != nil {
+		return fmt.Errorf("subscribe to LED service changes: %w", err)
+	}
+	defer receiver.sessionConnection.RemoveMatchSignal(unitStateMatch...)
 
 	var previous bool
 	initialized := false
-
-	check := func() error {
-		available, err := receiver.Available(ctx)
-		if err != nil {
-			return err
+	emit := func(available bool) error {
+		if initialized && available == previous {
+			return nil
 		}
 
-		if !initialized || available != previous {
-			previous = available
-			initialized = true
+		previous = available
+		initialized = true
 
-			select {
-			case changes <- available:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+		select {
+		case changes <- available:
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 
 		return nil
 	}
+	refresh := func() error {
+		available, err := receiver.Available(ctx)
+		if err != nil {
+			// Symbiosis may be restarting. Treat it as absent and wait for its
+			// NameOwnerChanged signal instead of terminating the notifier.
+			available = false
+		}
 
-	if err := check(); err != nil {
+		return emit(available)
+	}
+
+	if err := refresh(); err != nil {
 		return err
 	}
 
@@ -124,21 +213,55 @@ func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
 		case <-ctx.Done():
 			return nil
 
-		case signal, ok := <-signals:
+		case signal, ok := <-sessionSignals:
 			if !ok {
-				return errors.New("systemd signal channel closed")
+				return errors.New("session-bus signal channel closed")
+			}
+			if signal != nil && signal.Name == systemdPropertiesInterface+".PropertiesChanged" {
+				if err := refresh(); err != nil {
+					return err
+				}
 			}
 
-			if signal == nil || signal.Name != systemdInterface+".UnitFilesChanged" || signal.Path != systemdPath {
+		case signal, ok := <-systemSignals:
+			if !ok {
+				return errors.New("Symbiosis signal channel closed")
+			}
+			if signal == nil {
 				continue
 			}
 
-			if err := check(); err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
+			switch signal.Name {
+			case dbusInterface + ".NameOwnerChanged":
+				if len(signal.Body) != 3 {
+					continue
+				}
+				name, _ := signal.Body[0].(string)
+				newOwner, _ := signal.Body[2].(string)
+				if name != symbiosisService {
+					continue
+				}
+				if newOwner == "" {
+					if err := emit(false); err != nil {
+						return err
+					}
+					continue
+				}
+				if err := refresh(); err != nil {
+					return err
 				}
 
-				return err
+			case dbusObjectManagerInterface + ".InterfacesAdded", dbusObjectManagerInterface + ".InterfacesRemoved":
+				if len(signal.Body) == 0 {
+					continue
+				}
+				path, _ := signal.Body[0].(dbus.ObjectPath)
+				if path != symbiosisObject {
+					continue
+				}
+				if err := refresh(); err != nil {
+					return err
+				}
 			}
 		}
 	}

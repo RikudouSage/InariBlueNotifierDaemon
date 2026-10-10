@@ -59,7 +59,7 @@ func main() {
 	}
 	defer systemBus.Close()
 
-	checker := availability.NewChecker(sessionBus)
+	checker := availability.NewChecker(sessionBus, systemBus)
 
 	availabilityChanges := make(chan bool, 1)
 	watcherErrors := make(chan error, 1)
