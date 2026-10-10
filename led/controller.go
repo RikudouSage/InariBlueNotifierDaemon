@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"sync"
@@ -251,17 +252,27 @@ func (receiver *controller) SetState(state State) error {
 	defer receiver.mutex.Unlock()
 
 	if receiver.closed {
+		log.Printf("LED state request rejected: state=%d controller is closed", state)
 		return ErrClosed
 	}
 
 	if !receiver.busConnection.Connected() {
 		receiver.stateApplied = false
+		log.Printf("LED state request failed: state=%d Symbiosis D-Bus connection lost", state)
 		return errors.New("lost Symbiosis D-Bus connection")
 	}
 
 	if receiver.stateApplied && receiver.currentState == state {
+		log.Printf("LED state unchanged: state=%d already applied", state)
 		return nil
 	}
+
+	log.Printf(
+		"LED state transition: from=%d applied=%t to=%d",
+		receiver.currentState,
+		receiver.stateApplied,
+		state,
+	)
 
 	var err error
 
@@ -281,11 +292,13 @@ func (receiver *controller) SetState(state State) error {
 
 	if err != nil {
 		receiver.stateApplied = false
+		log.Printf("LED state transition failed: to=%d: %v", state, err)
 		return err
 	}
 
 	receiver.currentState = state
 	receiver.stateApplied = true
+	log.Printf("LED state transition complete: state=%d", state)
 
 	return nil
 }

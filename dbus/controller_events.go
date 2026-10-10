@@ -36,6 +36,7 @@ func (receiver *controller) Start() error {
 		receiver.connection.RemoveSignal(signals)
 		return fmt.Errorf("subscribe to voice call signals: %w", err)
 	}
+	log.Printf("subscribed to voice call status changes")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -62,6 +63,7 @@ func (receiver *controller) Stop() error {
 
 	cancel()
 	<-done
+	log.Printf("stopped voice call watcher")
 
 	receiver.cancel = nil
 	receiver.done = nil
@@ -93,6 +95,7 @@ func (receiver *controller) watch(
 
 		case signal, ok := <-signals:
 			if !ok {
+				log.Printf("voice call signal channel closed")
 				return
 			}
 
@@ -109,7 +112,13 @@ func (receiver *controller) watch(
 			}
 
 			if err := receiver.updateLED(); err != nil {
-				log.Printf("failed to update LED: %v", err)
+				log.Printf(
+					"LED update failed after call signal: name=%s path=%s incoming_calls=%d: %v",
+					signal.Name,
+					signal.Path,
+					len(receiver.incomingCalls),
+					err,
+				)
 			}
 		}
 	}
@@ -117,22 +126,36 @@ func (receiver *controller) watch(
 
 func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 	if len(signal.Body) == 0 {
+		log.Printf("ignored call status with no body: path=%s", signal.Path)
 		return
 	}
 
 	status, err := parseCallStatus(signal.Body)
 	if err != nil {
-		log.Printf("failed to parse call status: %v", err)
+		log.Printf("failed to parse call status: path=%s body=%#v: %v", signal.Path, signal.Body, err)
 		return
 	}
 
+	action := "cleared"
+	wasIncoming := false
 	switch status {
 	case voiceCallStatusIncoming:
 		receiver.incomingCalls[signal.Path] = struct{}{}
+		action = "tracked"
 
 	default:
+		_, wasIncoming = receiver.incomingCalls[signal.Path]
 		delete(receiver.incomingCalls, signal.Path)
 	}
+
+	log.Printf(
+		"call status: path=%s status=%d action=%s was_incoming=%t incoming_calls=%d",
+		signal.Path,
+		status,
+		action,
+		wasIncoming,
+		len(receiver.incomingCalls),
+	)
 }
 
 func parseCallStatus(body []any) (int, error) {
