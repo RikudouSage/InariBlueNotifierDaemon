@@ -65,10 +65,27 @@ func (receiver *checker) ledServiceObject(ctx context.Context) (dbus.ObjectPath,
 	return unitPath, nil
 }
 
-// Available reports whether the original LED service is not running and
-// Symbiosis has detected and published a TOH. Both conditions are required
-// before this daemon may control the LEDs.
+// Available reports whether the original LED service has yielded ownership,
+// is not running, and Symbiosis has detected and published a TOH. All three
+// conditions are required before this daemon may control the LEDs.
 func (receiver *checker) Available(ctx context.Context) (bool, error) {
+	var unitFileState string
+	err := receiver.sessionConnection.Object(
+		systemdService,
+		systemdPath,
+	).CallWithContext(
+		ctx,
+		systemdInterface+".GetUnitFileState",
+		0,
+		jollaLedService,
+	).Store(&unitFileState)
+	if err != nil {
+		return false, fmt.Errorf("get %s unit file state: %w", jollaLedService, err)
+	}
+	if unitFileState != "masked" && unitFileState != "masked-runtime" {
+		return false, nil
+	}
+
 	unitPath, err := receiver.ledServiceObject(ctx)
 	if err != nil {
 		return false, err
@@ -154,6 +171,11 @@ func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
 		dbus.WithMatchMember("PropertiesChanged"),
 		dbus.WithMatchArg(0, systemdUnitInterface),
 	}
+	unitFilesMatch := []dbus.MatchOption{
+		dbus.WithMatchObjectPath(systemdPath),
+		dbus.WithMatchInterface(systemdInterface),
+		dbus.WithMatchMember("UnitFilesChanged"),
+	}
 
 	if err := receiver.systemConnection.AddMatchSignal(ownerMatch...); err != nil {
 		return fmt.Errorf("subscribe to Symbiosis owner changes: %w", err)
@@ -174,6 +196,11 @@ func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
 		return fmt.Errorf("subscribe to LED service changes: %w", err)
 	}
 	defer receiver.sessionConnection.RemoveMatchSignal(unitStateMatch...)
+
+	if err := receiver.sessionConnection.AddMatchSignal(unitFilesMatch...); err != nil {
+		return fmt.Errorf("subscribe to LED service ownership changes: %w", err)
+	}
+	defer receiver.sessionConnection.RemoveMatchSignal(unitFilesMatch...)
 
 	var previous bool
 	initialized := false
@@ -217,7 +244,7 @@ func (receiver *checker) Watch(ctx context.Context, changes chan<- bool) error {
 			if !ok {
 				return errors.New("session-bus signal channel closed")
 			}
-			if signal != nil && signal.Name == systemdPropertiesInterface+".PropertiesChanged" {
+			if signal != nil && (signal.Name == systemdPropertiesInterface+".PropertiesChanged" || signal.Name == systemdInterface+".UnitFilesChanged") {
 				if err := refresh(); err != nil {
 					return err
 				}
