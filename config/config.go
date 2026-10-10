@@ -2,6 +2,7 @@ package config
 
 import (
 	"InariBlueNotifier/patterns"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,7 +36,7 @@ func New() (*Config, error) {
 		cfgDir = filepath.Join(cfgDir, ".config")
 	}
 	cfgDir = filepath.Join(cfgDir, "dev.rikudou", "inari-blue-notifier")
-	cfgFilePath := filepath.Join(cfgDir, "config_v2.ini")
+	cfgFilePath := filepath.Join(cfgDir, "config_v3.ini")
 	cfgFile, err := os.Open(cfgFilePath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("could not open config file: %w", err)
@@ -80,8 +81,12 @@ func New() (*Config, error) {
 	activePatterns := cfgRaw.Section(activePatternsSection)
 
 	parsePattern := func(raw string) (patterns.Pattern, error) {
+		decoded, err := base64.RawStdEncoding.DecodeString(raw)
+		if err != nil {
+			return patterns.Pattern{}, fmt.Errorf("could not base64 decode pattern: %w", err)
+		}
 		var result patterns.Pattern
-		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		if err := json.Unmarshal(decoded, &result); err != nil {
 			return patterns.Pattern{}, fmt.Errorf("failed parsing pattern json: %w", err)
 		}
 
@@ -161,7 +166,7 @@ func (receiver *Config) Save() error {
 			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
 		}
 		patternJson := lo.Must(json.Marshal(pattern))
-		cfgRaw.Section(activePatternsSection).Key(name).SetValue(string(patternJson))
+		cfgRaw.Section(activePatternsSection).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
 	}
 
 	for name, pattern := range receiver.StoredPatterns {
@@ -169,7 +174,7 @@ func (receiver *Config) Save() error {
 			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
 		}
 		patternJson := lo.Must(json.Marshal(pattern))
-		cfgRaw.Section(storedPatternsSection).Key(name).SetValue(string(patternJson))
+		cfgRaw.Section(storedPatternsSection).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
 	}
 
 	_ = cfgFile.Close()
