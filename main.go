@@ -5,6 +5,7 @@ import (
 	"InariBlueNotifier/config"
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/led"
+	"InariBlueNotifier/patterns"
 	"context"
 	"errors"
 	"fmt"
@@ -52,13 +53,6 @@ func main() {
 	cfg, err := config.New()
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to load configuration: %w", err))
-	}
-
-	if cfg.CallPattern.Name == "" {
-		cfg.CallPattern = led.DefaultCallPattern()
-		if err = cfg.Save(); err != nil {
-			log.Fatal(fmt.Errorf("failed to save configuration: %w", err))
-		}
 	}
 
 	sessionBus, err := dbus.ConnectSessionBus()
@@ -138,7 +132,7 @@ func main() {
 			var err error
 			ledController, err = led.NewWithPatterns(
 				systemBus,
-				led.DefaultNotificationPattern(),
+				patterns.MediumLengthBreath,
 				cfg.CallPattern,
 			)
 			if err != nil {
@@ -182,7 +176,7 @@ func main() {
 
 			newController, err := led.NewWithPatterns(
 				systemBus,
-				led.DefaultNotificationPattern(),
+				patterns.DefaultNotificationPattern,
 				cfg.CallPattern,
 			)
 			if err != nil {
