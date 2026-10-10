@@ -63,6 +63,7 @@ func New() (*Config, error) {
 
 		initialPatterns := []patterns.Pattern{
 			patterns.SlowBlink,
+			patterns.RapidBlink,
 			patterns.MediumLengthBreath,
 			patterns.QuickFlash,
 			patterns.GentleGlow,
