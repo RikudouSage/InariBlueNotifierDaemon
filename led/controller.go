@@ -60,17 +60,50 @@ const (
 )
 
 type Pattern struct {
-	Rise       time.Duration
-	Hold       time.Duration
-	Decay      time.Duration
-	Off        time.Duration
-	Delay      time.Duration
-	Repeat     uint8
-	Brightness uint8
+	Name string `json:"name"`
+
+	Rise       time.Duration `json:"rise"`
+	Hold       time.Duration `json:"hold"`
+	Decay      time.Duration `json:"decay"`
+	Off        time.Duration `json:"off"`
+	Delay      time.Duration `json:"delay"`
+	Repeat     uint8         `json:"repeat"`
+	Brightness uint8         `json:"brightness"`
+}
+
+func (receiver *Pattern) Validate() error {
+	if receiver.Name == "" {
+		return errors.New("empty name")
+	}
+
+	if receiver.Repeat > 15 {
+		return errors.New("repeat must be between 0 and 15")
+	}
+
+	durations := map[string]time.Duration{
+		"rise":  receiver.Rise,
+		"hold":  receiver.Hold,
+		"decay": receiver.Decay,
+		"off":   receiver.Off,
+		"delay": receiver.Delay,
+	}
+
+	for name, duration := range durations {
+		if duration < 0 || duration > maxTimingDuration {
+			return fmt.Errorf(
+				"%s must be between 0 and %s",
+				name,
+				maxTimingDuration,
+			)
+		}
+	}
+
+	return nil
 }
 
 func DefaultNotificationPattern() Pattern {
 	return Pattern{
+		Name:       "Default notification pattern",
 		Rise:       1125 * time.Millisecond,
 		Hold:       1125 * time.Millisecond,
 		Decay:      1125 * time.Millisecond,
@@ -82,6 +115,7 @@ func DefaultNotificationPattern() Pattern {
 
 func DefaultCallPattern() Pattern {
 	return Pattern{
+		Name:       "Default call pattern",
 		Hold:       280 * time.Millisecond,
 		Off:        280 * time.Millisecond,
 		Brightness: 255,
@@ -147,11 +181,11 @@ func NewWithContext(
 	notificationPattern Pattern,
 	callPattern Pattern,
 ) (Controller, error) {
-	if err := validatePattern(notificationPattern); err != nil {
+	if err := notificationPattern.Validate(); err != nil {
 		return nil, fmt.Errorf("notification pattern: %w", err)
 	}
 
-	if err := validatePattern(callPattern); err != nil {
+	if err := callPattern.Validate(); err != nil {
 		return nil, fmt.Errorf("call pattern: %w", err)
 	}
 
@@ -327,7 +361,7 @@ func (receiver *controller) disableLEDs() error {
 }
 
 func (receiver *controller) configureAnimation(pattern Pattern) error {
-	if err := validatePattern(pattern); err != nil {
+	if err := pattern.Validate(); err != nil {
 		return err
 	}
 
@@ -442,32 +476,6 @@ func (receiver *controller) writeRegister(register, value byte) error {
 			register,
 			io.ErrShortWrite,
 		)
-	}
-
-	return nil
-}
-
-func validatePattern(pattern Pattern) error {
-	if pattern.Repeat > 15 {
-		return errors.New("repeat must be between 0 and 15")
-	}
-
-	durations := map[string]time.Duration{
-		"rise":  pattern.Rise,
-		"hold":  pattern.Hold,
-		"decay": pattern.Decay,
-		"off":   pattern.Off,
-		"delay": pattern.Delay,
-	}
-
-	for name, duration := range durations {
-		if duration < 0 || duration > maxTimingDuration {
-			return fmt.Errorf(
-				"%s must be between 0 and %s",
-				name,
-				maxTimingDuration,
-			)
-		}
 	}
 
 	return nil
