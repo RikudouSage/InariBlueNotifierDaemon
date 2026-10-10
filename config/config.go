@@ -63,6 +63,9 @@ func New() (*Config, error) {
 		initialPatterns := []patterns.Pattern{
 			patterns.SlowBlink,
 			patterns.MediumLengthBreath,
+			patterns.QuickFlash,
+			patterns.GentleGlow,
+			patterns.DelayedBeacon,
 		}
 
 		instance.StoredPatterns = lo.KeyBy(initialPatterns, func(item patterns.Pattern) string {
