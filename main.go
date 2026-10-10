@@ -2,6 +2,7 @@ package main
 
 import (
 	"InariBlueNotifier/availability"
+	"InariBlueNotifier/config"
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/led"
 	"context"
@@ -47,6 +48,18 @@ func main() {
 		syscall.SIGQUIT,
 	)
 	defer stop()
+
+	cfg, err := config.New()
+	if err != nil {
+		log.Fatal(fmt.Errorf("failed to load configuration: %w", err))
+	}
+
+	if cfg.CallPattern.Name == "" {
+		cfg.CallPattern = led.DefaultCallPattern()
+		if err = cfg.Save(); err != nil {
+			log.Fatal(fmt.Errorf("failed to save configuration: %w", err))
+		}
+	}
 
 	sessionBus, err := dbus.ConnectSessionBus()
 	if err != nil {
@@ -123,7 +136,11 @@ func main() {
 			}
 
 			var err error
-			ledController, err = led.New(systemBus)
+			ledController, err = led.NewWithPatterns(
+				systemBus,
+				led.DefaultNotificationPattern(),
+				cfg.CallPattern,
+			)
 			if err != nil {
 				log.Printf("failed to create LED controller: %v", err)
 				continue
@@ -163,7 +180,11 @@ func main() {
 				continue
 			}
 
-			newController, err := led.New(systemBus)
+			newController, err := led.NewWithPatterns(
+				systemBus,
+				led.DefaultNotificationPattern(),
+				cfg.CallPattern,
+			)
 			if err != nil {
 				log.Printf("failed to create LED controller: %v", err)
 				retry = time.After(5 * time.Second)
