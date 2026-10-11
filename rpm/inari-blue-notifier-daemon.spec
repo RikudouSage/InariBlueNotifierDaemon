@@ -1,5 +1,5 @@
 Name:           inari-blue-notifier-daemon
-Version:        0.1.0
+Version:        1.3.0
 Release:        1%{?dist}
 Summary:        Blink your Inari Blue on incoming calls
 
