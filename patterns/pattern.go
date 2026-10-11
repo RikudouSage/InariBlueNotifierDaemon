@@ -21,6 +21,8 @@ type Pattern struct {
 	Delay      time.Duration `json:"delay"`
 	Repeat     uint8         `json:"repeat"`
 	Brightness uint8         `json:"brightness"`
+
+	Channels []uint8 `json:"channels,omitempty"`
 }
 
 func (receiver *Pattern) Validate() error {
@@ -30,6 +32,14 @@ func (receiver *Pattern) Validate() error {
 
 	if receiver.Repeat > 15 {
 		return errors.New("repeat must be between 0 and 15")
+	}
+
+	seenChannels := make(map[uint8]struct{}, len(receiver.Channels))
+	for _, channel := range receiver.Channels {
+		if _, seen := seenChannels[channel]; seen {
+			return fmt.Errorf("channel %d is configured more than once", channel)
+		}
+		seenChannels[channel] = struct{}{}
 	}
 
 	durations := map[string]time.Duration{

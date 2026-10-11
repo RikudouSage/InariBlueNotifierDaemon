@@ -17,6 +17,7 @@ import (
 
 const (
 	inariBlueI2CDeviceAddress = 0x45
+	inariBlueRequiredChannel  = 0
 
 	inariBlueRegisterGlobalControl     byte = 0x01
 	inariBlueRegisterChannelEnable     byte = 0x30
@@ -24,14 +25,11 @@ const (
 	inariBlueRegisterChannelPWMBase    byte = 0x34
 	inariBlueRegisterChannelTimingBase byte = 0x37
 
-	inariBlueLEDChannelCount = 3
-
 	inariBlueControllerEnabled  byte = 0x01
 	inariBlueControllerDisabled byte = 0x00
 
 	inariBlueChannelPatternMode byte = 0x9f
 
-	inariBlueAllChannelsEnabled  byte = 0x07
 	inariBlueAllChannelsDisabled byte = 0x00
 
 	// The hardware timing formula is duration = timing unit * value².
@@ -39,6 +37,36 @@ const (
 
 	inariBlueControllerRestartDelay = 200 * time.Millisecond
 )
+
+type inariBlueChannel struct {
+	configRegister     byte
+	brightnessRegister byte
+	timingRegister     byte
+	enableBit          byte
+}
+
+var inariBlueAllChannels = []uint8{inariBlueRequiredChannel, 1, 2}
+
+var inariBlueChannels = map[uint8]inariBlueChannel{
+	0: {
+		configRegister:     inariBlueRegisterChannelConfigBase,
+		brightnessRegister: inariBlueRegisterChannelPWMBase,
+		timingRegister:     inariBlueRegisterChannelTimingBase,
+		enableBit:          0x01,
+	},
+	1: {
+		configRegister:     inariBlueRegisterChannelConfigBase + 1,
+		brightnessRegister: inariBlueRegisterChannelPWMBase + 1,
+		timingRegister:     inariBlueRegisterChannelTimingBase + 3,
+		enableBit:          0x02,
+	},
+	2: {
+		configRegister:     inariBlueRegisterChannelConfigBase + 2,
+		brightnessRegister: inariBlueRegisterChannelPWMBase + 2,
+		timingRegister:     inariBlueRegisterChannelTimingBase + 6,
+		enableBit:          0x04,
+	},
+}
 
 var ErrClosed = errors.New("the Inari Blue device is closed")
 
@@ -146,10 +174,31 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 		return err
 	}
 
-	for channel := range inariBlueLEDChannelCount {
-		timing := inariBlueRegisterChannelTimingBase + byte(channel*3)
-		config := inariBlueRegisterChannelConfigBase + byte(channel)
-		brightness := inariBlueRegisterChannelPWMBase + byte(channel)
+	channels := pattern.Channels
+	// D-Bus does not distinguish a nil slice from an empty array.
+	if len(channels) == 0 {
+		channels = inariBlueAllChannels
+	}
+
+	// The Inari Blue LED assembly requires channel 0 as its shared path.
+	enabledChannels := inariBlueChannels[inariBlueRequiredChannel].enableBit
+	for _, channelIndex := range channels {
+		channel, ok := inariBlueChannels[channelIndex]
+		if !ok {
+			return fmt.Errorf("unknown Inari Blue LED channel: %d", channelIndex)
+		}
+
+		enabledChannels |= channel.enableBit
+	}
+
+	// Preserve the original device initialization sequence: configure every
+	// channel before restarting the controller, then enable only the channels
+	// requested by the pattern.
+	for _, channelIndex := range inariBlueAllChannels {
+		channel := inariBlueChannels[channelIndex]
+		timing := channel.timingRegister
+		config := channel.configRegister
+		brightness := channel.brightnessRegister
 
 		writes := [][2]byte{
 			{timing, (rise << 4) | hold},
@@ -174,7 +223,7 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 		return err
 	}
 
-	return receiver.writeRegister(inariBlueRegisterChannelEnable, inariBlueAllChannelsEnabled)
+	return receiver.writeRegister(inariBlueRegisterChannelEnable, enabledChannels)
 }
 
 // Disable turns off LED outputs without releasing the device.
