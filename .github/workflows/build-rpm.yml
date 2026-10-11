@@ -28,7 +28,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            version="0.0.0"
+            version="1.2.2"
           fi
 
           sed -i -E "s/^Version:[[:space:]]+.*/Version:        ${version}/" rpm/inari-blue-notifier-daemon.spec
