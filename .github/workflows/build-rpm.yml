@@ -34,6 +34,9 @@ jobs:
           sed -i -E "s/^Version:[[:space:]]+.*/Version:        ${version}/" rpm/inari-blue-notifier-daemon.spec
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Run tests
+        run: go test ./...
+
       - name: Pull SDK image
         run: make pull
 
