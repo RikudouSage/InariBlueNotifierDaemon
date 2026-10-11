@@ -62,6 +62,8 @@ const (
 
 type Controller interface {
 	SetState(state State) error
+	PlayPattern(pattern patterns.Pattern) error
+	Stop() error
 	Release() error
 	Shutdown() error
 	Done() <-chan struct{}
@@ -300,6 +302,57 @@ func (receiver *controller) SetState(state State) error {
 	receiver.stateApplied = true
 	log.Printf("LED state transition complete: state=%d", state)
 
+	return nil
+}
+
+// PlayPattern immediately configures and starts pattern.
+//
+// It does not change the controller's logical notification or call state.
+// A later SetState call will therefore reapply its corresponding pattern.
+func (receiver *controller) PlayPattern(pattern patterns.Pattern) error {
+	receiver.mutex.Lock()
+	defer receiver.mutex.Unlock()
+
+	if receiver.closed {
+		return ErrClosed
+	}
+
+	if !receiver.busConnection.Connected() {
+		receiver.stateApplied = false
+		return errors.New("lost Symbiosis D-Bus connection")
+	}
+
+	if err := receiver.configureAnimation(pattern); err != nil {
+		receiver.stateApplied = false
+		return err
+	}
+
+	// The hardware now runs a pattern that might not match currentState.
+	receiver.stateApplied = false
+	return nil
+}
+
+// Stop turns off the LED outputs without releasing the controller.
+func (receiver *controller) Stop() error {
+	receiver.mutex.Lock()
+	defer receiver.mutex.Unlock()
+
+	if receiver.closed {
+		return ErrClosed
+	}
+
+	if !receiver.busConnection.Connected() {
+		receiver.stateApplied = false
+		return errors.New("lost Symbiosis D-Bus connection")
+	}
+
+	if err := receiver.disableLEDs(); err != nil {
+		receiver.stateApplied = false
+		return err
+	}
+
+	receiver.currentState = Off
+	receiver.stateApplied = true
 	return nil
 }
 
