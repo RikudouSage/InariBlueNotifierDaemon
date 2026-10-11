@@ -18,15 +18,15 @@ import (
 )
 
 func start(controller led.Controller, sessionBus *dbus.Conn) (cleanup func() error, err error) {
-	debugController := appdbus.NewDebugController(controller)
+	externalController := appdbus.NewExternalController(controller)
 
-	if err := debugController.Register(sessionBus); err != nil {
-		return nil, fmt.Errorf("register debug controller: %w", err)
+	if err := externalController.Register(sessionBus); err != nil {
+		return nil, fmt.Errorf("register external controller: %w", err)
 	}
 
 	mainController := appdbus.NewController(sessionBus, controller)
 	if err := mainController.Start(); err != nil {
-		cleanupErr := debugController.Unregister(sessionBus)
+		cleanupErr := externalController.Unregister(sessionBus)
 		return nil, errors.Join(
 			fmt.Errorf("start main controller: %w", err),
 			cleanupErr,
@@ -36,7 +36,7 @@ func start(controller led.Controller, sessionBus *dbus.Conn) (cleanup func() err
 	return func() error {
 		return errors.Join(
 			mainController.Stop(),
-			debugController.Unregister(sessionBus),
+			externalController.Unregister(sessionBus),
 		)
 	}, nil
 }
