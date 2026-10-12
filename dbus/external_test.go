@@ -1,7 +1,6 @@
 package dbus
 
 import (
-	"InariBlueNotifier/led"
 	"InariBlueNotifier/patterns"
 	"encoding/json"
 	"errors"
@@ -23,8 +22,6 @@ type fakeExternalLEDController struct {
 	played []patterns.Pattern
 	err    error
 }
-
-func (receiver *fakeExternalLEDController) SetState(led.State) error { return receiver.err }
 
 func (receiver *fakeExternalLEDController) PlayPattern(pattern patterns.Pattern) error {
 	receiver.played = append(receiver.played, pattern)
@@ -48,7 +45,7 @@ func TestExternalControllerExportsExpectedDBusMethods(t *testing.T) {
 		}
 	}
 
-	want := []string{"PlayPattern", "PlayPatternJSON", "SetState", "Stop"}
+	want := []string{"PlayPattern", "PlayPatternJSON", "Stop"}
 	if !slices.Equal(exported, want) {
 		t.Fatalf("D-Bus methods = %v, want %v", exported, want)
 	}
