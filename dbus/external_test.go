@@ -37,14 +37,14 @@ func (receiver *fakeExternalLEDController) Shutdown() error       { return nil }
 func (receiver *fakeExternalLEDController) Done() <-chan struct{} { return nil }
 
 func TestExternalControllerExportsExpectedDBusMethods(t *testing.T) {
-	dbusErrorType := reflect.TypeOf((*dbus.Error)(nil))
-	controllerType := reflect.TypeOf(&ExternalController{})
+	dbusErrorType := reflect.TypeFor[*dbus.Error]()
+	controllerType := reflect.TypeFor[*ExternalController]()
 
 	var exported []string
-	for i := 0; i < controllerType.NumMethod(); i++ {
-		methodType := controllerType.Method(i).Type
+	for method := range controllerType.Methods() {
+		methodType := method.Type
 		if methodType.NumOut() > 0 && methodType.Out(methodType.NumOut()-1) == dbusErrorType {
-			exported = append(exported, controllerType.Method(i).Name)
+			exported = append(exported, method.Name)
 		}
 	}
 
@@ -55,7 +55,7 @@ func TestExternalControllerExportsExpectedDBusMethods(t *testing.T) {
 }
 
 func TestPlayPatternJSONTakesSingleStringArgument(t *testing.T) {
-	method, ok := reflect.TypeOf(&ExternalController{}).MethodByName("PlayPatternJSON")
+	method, ok := reflect.TypeFor[*ExternalController]().MethodByName("PlayPatternJSON")
 	if !ok {
 		t.Fatal("PlayPatternJSON not found")
 	}
