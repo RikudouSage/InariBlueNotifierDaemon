@@ -1,0 +1,71 @@
+package dbus
+
+import (
+	"testing"
+
+	"github.com/godbus/dbus/v5"
+)
+
+func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
+	receiver := &controller{
+		activeNotifications:      make(map[uint32]struct{}),
+		pendingNotificationCalls: make(map[uint32]struct{}),
+	}
+
+	// Locally constructed D-Bus messages use serial zero. It is sufficient here
+	// to verify the serial/reply_serial correlation logic.
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+	}); changed {
+		t.Fatal("Notify call changed active notification state before its reply")
+	}
+
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	}); !changed {
+		t.Fatal("Notify reply did not activate notification")
+	}
+	if _, ok := receiver.activeNotifications[42]; !ok {
+		t.Fatal("notification ID was not tracked")
+	}
+
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeSignal,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationClosed),
+		},
+		Body: []any{uint32(42), uint32(2)},
+	}); !changed {
+		t.Fatal("NotificationClosed did not update active notification state")
+	}
+	if len(receiver.activeNotifications) != 0 {
+		t.Fatalf("active notifications = %v, want none", receiver.activeNotifications)
+	}
+}
+
+func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
+	receiver := &controller{
+		activeNotifications: map[uint32]struct{}{1: {}, 2: {}},
+	}
+
+	changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeSignal,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationClosed),
+		},
+		Body: []any{uint32(1), uint32(2)},
+	})
+	if !changed || len(receiver.activeNotifications) != 1 {
+		t.Fatalf("close result changed=%t active=%v, want one active notification", changed, receiver.activeNotifications)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/samber/lo"
 	"gopkg.in/ini.v1"
@@ -20,6 +21,15 @@ const (
 
 	sectionStoredPatterns = "storedPatterns"
 	sectionActivePatterns = "activePatterns"
+	sectionEvents         = "events"
+)
+
+type EventType string
+
+const (
+	EventCall         EventType = patternKeyCall
+	EventFavoriteCall EventType = patternKeyFavoriteCall
+	EventNotification EventType = patternKeyNotification
 )
 
 type Config struct {
@@ -30,6 +40,8 @@ type Config struct {
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern patterns.Pattern
 	NotificationPattern patterns.Pattern
+
+	Events map[EventType]bool
 }
 
 func New() (*Config, error) {
@@ -54,6 +66,7 @@ func New() (*Config, error) {
 	instance := &Config{
 		cfgFilePath:    cfgFilePath,
 		StoredPatterns: make(map[string]patterns.Pattern),
+		Events:         make(map[EventType]bool, 3),
 	}
 
 	changedConfig := false
@@ -125,14 +138,14 @@ func New() (*Config, error) {
 				*property = pattern
 			}
 		} else {
-			*property = patterns.DefaultCallPattern
+			*property = patternData.defaultVal
 			changedConfig = true
 		}
 	}
 
 	storedPatterns := cfgRaw.Section(sectionStoredPatterns)
-	for _, value := range storedPatterns.Keys() {
-		pattern, err := parsePattern(value.String())
+	for _, key := range storedPatterns.Keys() {
+		pattern, err := parsePattern(key.String())
 		if err != nil {
 			changedConfig = true
 			continue
@@ -143,6 +156,21 @@ func New() (*Config, error) {
 		}
 
 		instance.StoredPatterns[pattern.Name] = pattern
+	}
+
+	events := cfgRaw.Section(sectionEvents)
+	for _, key := range events.Keys() {
+		instance.Events[EventType(key.Name())], err = key.Bool()
+		if err != nil {
+			instance.Events[EventType(key.Name())] = false
+		}
+	}
+	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification}
+	for _, key := range defaultKeys {
+		if _, ok := instance.Events[key]; !ok {
+			instance.Events[key] = true
+			changedConfig = true
+		}
 	}
 
 	if changedConfig {
@@ -197,6 +225,10 @@ func (receiver *Config) Save() error {
 		}
 		patternJson := lo.Must(json.Marshal(pattern))
 		cfgRaw.Section(sectionStoredPatterns).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
+	}
+
+	for name, enabled := range receiver.Events {
+		cfgRaw.Section(sectionEvents).Key(string(name)).SetValue(strconv.FormatBool(enabled))
 	}
 
 	_ = cfgFile.Close()

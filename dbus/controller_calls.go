@@ -1,6 +1,7 @@
 package dbus
 
 import (
+	"InariBlueNotifier/config"
 	"InariBlueNotifier/contacts"
 	"context"
 	"errors"
@@ -14,74 +15,11 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func (receiver *controller) Start() error {
-	receiver.mutex.Lock()
-	defer receiver.mutex.Unlock()
-
-	if err := receiver.ledController.Stop(); err != nil {
-		return fmt.Errorf("initialize LED state: %w", err)
-	}
-
-	if receiver.cancel != nil {
-		return errors.New("controller already started")
-	}
-
-	signals := make(chan *dbus.Signal, 16)
-
-	matchOptions := []dbus.MatchOption{
-		dbus.WithMatchInterface(voiceCallInterface),
-		dbus.WithMatchMember("statusChanged"),
-	}
-
-	receiver.connection.Signal(signals)
-
-	if err := receiver.connection.AddMatchSignal(matchOptions...); err != nil {
-		receiver.connection.RemoveSignal(signals)
-		return fmt.Errorf("subscribe to voice call signals: %w", err)
-	}
-	log.Printf("subscribed to voice call status changes")
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	receiver.cancel = cancel
-	receiver.done = make(chan struct{})
-	receiver.incomingCalls = make(map[dbus.ObjectPath]bool)
-
-	go receiver.watch(ctx, signals, matchOptions, receiver.done)
-
-	return nil
-}
-
-func (receiver *controller) Stop() error {
-	receiver.mutex.Lock()
-
-	if receiver.cancel == nil {
-		receiver.mutex.Unlock()
-		return nil
-	}
-
-	cancel := receiver.cancel
-	done := receiver.done
-
-	cancel()
-	<-done
-	log.Printf("stopped voice call watcher")
-
-	receiver.cancel = nil
-	receiver.done = nil
-
-	receiver.mutex.Unlock()
-
-	return nil
-}
-
-func (receiver *controller) watch(
+func (receiver *controller) watchCalls(
 	ctx context.Context,
 	signals chan *dbus.Signal,
 	matchOptions []dbus.MatchOption,
-	done chan struct{},
 ) {
-	defer close(done)
 	defer receiver.connection.RemoveSignal(signals)
 
 	defer func() {
@@ -105,11 +43,13 @@ func (receiver *controller) watch(
 				continue
 			}
 
+			receiver.eventMutex.Lock()
 			switch signal.Name {
 			case voiceCallStatusChanged:
 				receiver.handleCallStatus(signal)
 
 			default:
+				receiver.eventMutex.Unlock()
 				continue
 			}
 
@@ -122,6 +62,7 @@ func (receiver *controller) watch(
 					err,
 				)
 			}
+			receiver.eventMutex.Unlock()
 		}
 	}
 }
@@ -142,7 +83,11 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 	wasIncoming := false
 	switch status {
 	case voiceCallStatusIncoming:
-		receiver.incomingCalls[signal.Path] = receiver.isFavoriteCall(signal.Path)
+		favorite := false
+		if receiver.config == nil || receiver.config.Events == nil || receiver.config.Events[config.EventFavoriteCall] {
+			favorite = receiver.isFavoriteCall(signal.Path)
+		}
+		receiver.incomingCalls[signal.Path] = favorite
 		action = "tracked"
 
 	default:
