@@ -9,15 +9,17 @@ import (
 
 func (receiver *controller) updateLED() error {
 	eventEnabled := func(event config.EventType) bool {
-		// Config files created before event toggles existed, along with callers
-		// that construct a Config directly, retain the default enabled behavior.
+		// Missing event settings use the same defaults as a newly created config.
 		if receiver.config == nil || receiver.config.Events == nil {
-			return true
+			return event != config.EventNotification
 		}
 
 		enabled, configured := receiver.config.Events[event]
+		if !configured {
+			return event != config.EventNotification
+		}
 
-		return !configured || enabled
+		return enabled
 	}
 
 	switch {

@@ -80,7 +80,12 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 	ledController := &recordingLEDController{}
 	receiver := &controller{
 		ledController: ledController,
-		config:        &config.Config{NotificationPattern: notification},
+		config: &config.Config{
+			NotificationPattern: notification,
+			Events: map[config.EventType]bool{
+				config.EventNotification: true,
+			},
+		},
 		activeNotifications: map[uint32]struct{}{
 			1: {},
 		},
@@ -91,6 +96,24 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 	}
 	if ledController.lastPattern.Name != notification.Name {
 		t.Fatalf("applied pattern = %q, want %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
+func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config:        &config.Config{NotificationPattern: patterns.RapidBlink},
+		activeNotifications: map[uint32]struct{}{
+			1: {},
+		},
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if !ledController.stopped {
+		t.Fatal("LED controller was not stopped")
 	}
 }
 
