@@ -35,7 +35,6 @@ type controller struct {
 
 	// incomingCalls maps each ringing call to whether its caller is a favourite.
 	incomingCalls map[dbus.ObjectPath]bool
-	hasUnread     bool
 }
 
 func NewController(connection *dbus.Conn, ledController led.Controller) Controller {

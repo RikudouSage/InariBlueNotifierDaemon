@@ -2,7 +2,6 @@ package dbus
 
 import (
 	"InariBlueNotifier/config"
-	"InariBlueNotifier/led"
 	"InariBlueNotifier/patterns"
 	"testing"
 
@@ -11,16 +10,18 @@ import (
 
 type recordingLEDController struct {
 	lastPattern patterns.Pattern
+	stopped     bool
 }
-
-func (receiver *recordingLEDController) SetState(led.State) error { return nil }
 
 func (receiver *recordingLEDController) PlayPattern(pattern patterns.Pattern) error {
 	receiver.lastPattern = pattern
 	return nil
 }
 
-func (receiver *recordingLEDController) Stop() error    { return nil }
+func (receiver *recordingLEDController) Stop() error {
+	receiver.stopped = true
+	return nil
+}
 func (receiver *recordingLEDController) Release() error { return nil }
 func (receiver *recordingLEDController) Shutdown() error {
 	return nil
@@ -71,5 +72,17 @@ func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 	}
 	if ledController.lastPattern.Name != favourite.Name {
 		t.Fatalf("applied pattern = %q, want %q", ledController.lastPattern.Name, favourite.Name)
+	}
+}
+
+func TestUpdateLEDStopsWhenThereAreNoEvents(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{ledController: ledController}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if !ledController.stopped {
+		t.Fatal("LED controller was not stopped")
 	}
 }

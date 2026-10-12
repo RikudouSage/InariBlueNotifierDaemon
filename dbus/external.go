@@ -24,14 +24,6 @@ func NewExternalController(ledController led.Controller) *ExternalController {
 	}
 }
 
-func (receiver *ExternalController) SetState(state uint8) *dbus.Error {
-	if err := receiver.ledController.SetState(led.State(state)); err != nil {
-		return dbus.MakeFailedError(err)
-	}
-
-	return nil
-}
-
 func (receiver *ExternalController) PlayPattern(pattern patterns.Pattern) *dbus.Error {
 	if err := receiver.ledController.PlayPattern(pattern); err != nil {
 		return dbus.MakeFailedError(err)
