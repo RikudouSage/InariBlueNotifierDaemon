@@ -168,7 +168,7 @@ func New() (*Config, error) {
 	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification}
 	for _, key := range defaultKeys {
 		if _, ok := instance.Events[key]; !ok {
-			instance.Events[key] = true
+			instance.Events[key] = key != EventNotification
 			changedConfig = true
 		}
 	}
