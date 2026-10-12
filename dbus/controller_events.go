@@ -1,6 +1,7 @@
 package dbus
 
 import (
+	"InariBlueNotifier/contacts"
 	"InariBlueNotifier/led"
 	"context"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -44,7 +46,7 @@ func (receiver *controller) Start() error {
 
 	receiver.cancel = cancel
 	receiver.done = make(chan struct{})
-	receiver.incomingCalls = make(map[dbus.ObjectPath]struct{})
+	receiver.incomingCalls = make(map[dbus.ObjectPath]bool)
 	receiver.hasUnread = false
 
 	go receiver.watch(ctx, signals, matchOptions, receiver.done)
@@ -142,7 +144,7 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 	wasIncoming := false
 	switch status {
 	case voiceCallStatusIncoming:
-		receiver.incomingCalls[signal.Path] = struct{}{}
+		receiver.incomingCalls[signal.Path] = receiver.isFavoriteCall(signal.Path)
 		action = "tracked"
 
 	default:
@@ -153,7 +155,7 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 		// object. Once it becomes idle, no call can still be ringing. Clear
 		// any paths left behind by a missed or differently-addressed signal.
 		if signal.Path == activeVoiceCallPath && status == voiceCallStatusIdle {
-			receiver.incomingCalls = make(map[dbus.ObjectPath]struct{})
+			receiver.incomingCalls = make(map[dbus.ObjectPath]bool)
 			action = "cleared-active-call"
 		}
 	}
@@ -167,6 +169,36 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 		len(receiver.incomingCalls),
 		receiver.incomingCallPaths(),
 	)
+}
+
+func (receiver *controller) isFavoriteCall(path dbus.ObjectPath) bool {
+	if receiver.connection == nil {
+		return false
+	}
+
+	lineID, err := receiver.connection.Object("org.nemomobile.voicecall", path).GetProperty(voiceCallInterface + ".lineId")
+	if err != nil {
+		log.Printf("cannot get incoming caller number: path=%s: %v", path, err)
+		return false
+	}
+
+	number, ok := lineID.Value().(string)
+	if !ok || number == "" {
+		log.Printf("incoming caller number is unavailable: path=%s", path)
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	favorite, err := contacts.NewClient(receiver.connection).IsFavorite(ctx, number)
+	if err != nil {
+		log.Printf("favorite caller lookup failed: path=%s: %v", path, err)
+		return false
+	}
+
+	log.Printf("incoming caller favorite lookup: path=%s favorite=%t", path, favorite)
+	return favorite
 }
 
 func (receiver *controller) incomingCallPaths() string {

@@ -18,14 +18,14 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func start(controller led.Controller, sessionBus *dbus.Conn) (cleanup func() error, err error) {
+func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
 	externalController := appdbus.NewExternalController(controller)
 
 	if err := externalController.Register(sessionBus); err != nil {
 		return nil, fmt.Errorf("register external controller: %w", err)
 	}
 
-	mainController := appdbus.NewController(sessionBus, controller)
+	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg)
 	if err := mainController.Start(); err != nil {
 		cleanupErr := externalController.Unregister(sessionBus)
 		return nil, errors.Join(
@@ -147,7 +147,7 @@ func main() {
 				continue
 			}
 
-			stopServices, err = start(ledController, sessionBus)
+			stopServices, err = start(ledController, sessionBus, cfg)
 			if err != nil {
 				log.Printf("failed to start services: %v", err)
 				cleanup()
@@ -202,7 +202,7 @@ func main() {
 
 			ledController = newController
 
-			stopServices, err = start(ledController, sessionBus)
+			stopServices, err = start(ledController, sessionBus, cfg)
 			if err != nil {
 				log.Printf("failed to start services: %v", err)
 				cleanup()

@@ -1,0 +1,14 @@
+[Unit]
+Description=Inari Blue Notifier Contacts Helper
+After=user-session.target
+After=dbus.socket
+Requires=dbus.socket
+
+[Service]
+ExecStart=/usr/bin/sailjail -p inari-blue-notifier-contacts.desktop -- /usr/bin/inari-blue-notifier-contacts
+SyslogIdentifier=inari-blue-notifier-contacts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=post-user-session.target

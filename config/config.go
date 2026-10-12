@@ -14,16 +14,19 @@ import (
 )
 
 const (
-	callPatternKey        = "call"
-	storedPatternsSection = "storedPatterns"
-	activePatternsSection = "activePatterns"
+	callPatternKey         = "call"
+	favoriteCallPatternKey = "favoriteCall"
+	storedPatternsSection  = "storedPatterns"
+	activePatternsSection  = "activePatterns"
 )
 
 type Config struct {
 	cfgFilePath string
 
 	StoredPatterns map[string]patterns.Pattern
-	CallPattern    patterns.Pattern
+
+	CallPattern         patterns.Pattern
+	FavoriteCallPattern patterns.Pattern
 }
 
 func New() (*Config, error) {
@@ -98,17 +101,24 @@ func New() (*Config, error) {
 		return result, nil
 	}
 
-	if callPatternRaw := activePatterns.Key(callPatternKey).String(); callPatternRaw != "" {
-		callPattern, err := parsePattern(callPatternRaw)
-		if err != nil {
-			instance.CallPattern = patterns.DefaultCallPattern
-			changedConfig = true
+	configPatterns := map[*patterns.Pattern]string{
+		&instance.CallPattern:         callPatternKey,
+		&instance.FavoriteCallPattern: favoriteCallPatternKey,
+	}
+
+	for property, patternKey := range configPatterns {
+		if patternRaw := activePatterns.Key(patternKey).String(); patternRaw != "" {
+			pattern, err := parsePattern(patternRaw)
+			if err != nil {
+				*property = patterns.DefaultCallPattern
+				changedConfig = true
+			} else {
+				*property = pattern
+			}
 		} else {
-			instance.CallPattern = callPattern
+			*property = patterns.DefaultCallPattern
+			changedConfig = true
 		}
-	} else {
-		instance.CallPattern = patterns.DefaultCallPattern
-		changedConfig = true
 	}
 
 	storedPatterns := cfgRaw.Section(storedPatternsSection)
@@ -142,7 +152,8 @@ func (receiver *Config) Save() error {
 	}
 
 	activePatterns := map[string]patterns.Pattern{
-		callPatternKey: receiver.CallPattern,
+		callPatternKey:         receiver.CallPattern,
+		favoriteCallPatternKey: receiver.FavoriteCallPattern,
 	}
 
 	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {

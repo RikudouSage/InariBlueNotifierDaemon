@@ -1,0 +1,5 @@
+# x-sailjail-description = Inari Blue Notifier Auth
+# Lets the contacts helper authenticate its D-Bus caller against the live
+# notifier systemd user service. It does not grant contact-data access.
+dbus-user.talk org.freedesktop.DBus
+dbus-user.talk org.freedesktop.systemd1

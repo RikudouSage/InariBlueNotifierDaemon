@@ -1,7 +1,9 @@
 package dbus
 
 import (
+	"InariBlueNotifier/config"
 	"InariBlueNotifier/led"
+	"InariBlueNotifier/patterns"
 	"context"
 	"sync"
 
@@ -26,18 +28,42 @@ type controller struct {
 	connection    *dbus.Conn
 	ledController led.Controller
 
+	config *config.Config
 	mutex  sync.Mutex
 	cancel context.CancelFunc
 	done   chan struct{}
 
-	incomingCalls map[dbus.ObjectPath]struct{}
+	// incomingCalls maps each ringing call to whether its caller is a favourite.
+	incomingCalls map[dbus.ObjectPath]bool
 	hasUnread     bool
 }
 
 func NewController(connection *dbus.Conn, ledController led.Controller) Controller {
+	return NewControllerWithConfig(connection, ledController, &config.Config{
+		CallPattern:         patterns.DefaultCallPattern,
+		FavoriteCallPattern: patterns.DefaultCallPattern,
+	})
+}
+
+// NewControllerWithConfig creates a controller that uses the configured call
+// patterns and selects the favourite pattern when the contacts helper is
+// available over the session bus.
+func NewControllerWithConfig(
+	connection *dbus.Conn,
+	ledController led.Controller,
+	configuration *config.Config,
+) Controller {
+	if configuration == nil {
+		configuration = &config.Config{
+			CallPattern:         patterns.DefaultCallPattern,
+			FavoriteCallPattern: patterns.DefaultCallPattern,
+		}
+	}
+
 	return &controller{
 		connection:    connection,
 		ledController: ledController,
-		incomingCalls: make(map[dbus.ObjectPath]struct{}),
+		config:        configuration,
+		incomingCalls: make(map[dbus.ObjectPath]bool),
 	}
 }

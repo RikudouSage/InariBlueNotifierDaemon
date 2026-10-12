@@ -6,11 +6,13 @@ SDK_IMAGE := coderus/sailfishos-platform-sdk:$(SFOS_VERSION)
 SDK_TARGET := SailfishOS-$(SFOS_VERSION)-$(SFOS_ARCH)
 RPM_OUT := rpm-out
 BINARY := inari-blue-notifier-daemon
+CONTACTS_BINARY := inari-blue-notifier-contacts
 
 .PHONY: build rpm pull
 
 build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false -mod=readonly -trimpath -o $(BINARY) .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false -mod=readonly -trimpath -o $(CONTACTS_BINARY) ./cmd/inari-blue-notifier-contacts
 
 pull:
 	docker pull $(SDK_IMAGE)
