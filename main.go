@@ -6,7 +6,6 @@ import (
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/devices"
 	"InariBlueNotifier/led"
-	"InariBlueNotifier/patterns"
 	"context"
 	"errors"
 	"fmt"
@@ -136,11 +135,7 @@ func main() {
 				continue
 			}
 
-			ledController, err = led.NewWithPatterns(
-				device,
-				patterns.MediumLengthBreath,
-				cfg.CallPattern,
-			)
+			ledController, err = led.New(device)
 			if err != nil {
 				log.Printf("failed to create LED controller: %v", err)
 				_ = device.Release()
@@ -188,11 +183,7 @@ func main() {
 				continue
 			}
 
-			newController, err := led.NewWithPatterns(
-				device,
-				patterns.DefaultNotificationPattern,
-				cfg.CallPattern,
-			)
+			newController, err := led.New(device)
 			if err != nil {
 				log.Printf("failed to create LED controller: %v", err)
 				_ = device.Release()

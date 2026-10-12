@@ -2,7 +2,6 @@ package dbus
 
 import (
 	"InariBlueNotifier/contacts"
-	"InariBlueNotifier/led"
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +18,7 @@ func (receiver *controller) Start() error {
 	receiver.mutex.Lock()
 	defer receiver.mutex.Unlock()
 
-	if err := receiver.ledController.SetState(led.Off); err != nil {
+	if err := receiver.ledController.Stop(); err != nil {
 		return fmt.Errorf("initialize LED state: %w", err)
 	}
 
@@ -47,7 +46,6 @@ func (receiver *controller) Start() error {
 	receiver.cancel = cancel
 	receiver.done = make(chan struct{})
 	receiver.incomingCalls = make(map[dbus.ObjectPath]bool)
-	receiver.hasUnread = false
 
 	go receiver.watch(ctx, signals, matchOptions, receiver.done)
 
