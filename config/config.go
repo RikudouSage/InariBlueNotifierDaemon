@@ -104,16 +104,22 @@ func New() (*Config, error) {
 		return result, nil
 	}
 
-	configPatterns := map[*patterns.Pattern]string{
-		&instance.CallPattern:         patternKeyCall,
-		&instance.FavoriteCallPattern: patternKeyFavoriteCall,
+	type patternConfig struct {
+		key        string
+		defaultVal patterns.Pattern
 	}
 
-	for property, patternKey := range configPatterns {
-		if patternRaw := activePatterns.Key(patternKey).String(); patternRaw != "" {
+	configPatterns := map[*patterns.Pattern]patternConfig{
+		&instance.CallPattern:         {key: patternKeyCall, defaultVal: patterns.DefaultCallPattern},
+		&instance.FavoriteCallPattern: {key: patternKeyFavoriteCall, defaultVal: patterns.DefaultCallPattern},
+		&instance.NotificationPattern: {key: patternKeyNotification, defaultVal: patterns.DefaultNotificationPattern},
+	}
+
+	for property, patternData := range configPatterns {
+		if patternRaw := activePatterns.Key(patternData.key).String(); patternRaw != "" {
 			pattern, err := parsePattern(patternRaw)
 			if err != nil {
-				*property = patterns.DefaultCallPattern
+				*property = patternData.defaultVal
 				changedConfig = true
 			} else {
 				*property = pattern
@@ -157,6 +163,7 @@ func (receiver *Config) Save() error {
 	activePatterns := map[string]patterns.Pattern{
 		patternKeyCall:         receiver.CallPattern,
 		patternKeyFavoriteCall: receiver.FavoriteCallPattern,
+		patternKeyNotification: receiver.NotificationPattern,
 	}
 
 	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
