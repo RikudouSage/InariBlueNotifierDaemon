@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Inari Blue Notifier Contacts Helper
+NoDisplay=true
+Exec=/usr/bin/inari-blue-notifier-contacts
+
+[X-Sailjail]
+Permissions=Contacts;Privileged;InariBlueNotifierDaemonContactAuth
+OrganizationName=dev.rikudou
+ApplicationName=InariBlueNotifierContacts

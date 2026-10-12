@@ -12,8 +12,31 @@ func (receiver *controller) updateLED() error {
 
 	switch {
 	case len(receiver.incomingCalls) > 0:
-		state = led.Blinking
+		pattern := receiver.config.CallPattern
 		reason = "incoming call"
+
+		for _, favorite := range receiver.incomingCalls {
+			if favorite {
+				pattern = receiver.config.FavoriteCallPattern
+				reason = "incoming favourite call"
+				break
+			}
+		}
+
+		log.Printf(
+			"LED update: requested_pattern=%s reason=%s incoming_calls=%d has_unread=%t",
+			pattern.Name,
+			reason,
+			len(receiver.incomingCalls),
+			receiver.hasUnread,
+		)
+
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
+		}
+
+		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		return nil
 
 	case receiver.hasUnread:
 		state = led.Breathing
