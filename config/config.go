@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	callPatternKey         = "call"
-	favoriteCallPatternKey = "favoriteCall"
-	storedPatternsSection  = "storedPatterns"
-	activePatternsSection  = "activePatterns"
+	patternKeyCall         = "call"
+	patternKeyFavoriteCall = "favoriteCall"
+	patternKeyNotification = "notification"
+
+	sectionStoredPatterns = "storedPatterns"
+	sectionActivePatterns = "activePatterns"
 )
 
 type Config struct {
@@ -27,6 +29,7 @@ type Config struct {
 
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern patterns.Pattern
+	NotificationPattern patterns.Pattern
 }
 
 func New() (*Config, error) {
@@ -82,7 +85,7 @@ func New() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not load config file: %w", err)
 	}
-	activePatterns := cfgRaw.Section(activePatternsSection)
+	activePatterns := cfgRaw.Section(sectionActivePatterns)
 
 	parsePattern := func(raw string) (patterns.Pattern, error) {
 		decoded, err := base64.RawStdEncoding.DecodeString(raw)
@@ -102,8 +105,8 @@ func New() (*Config, error) {
 	}
 
 	configPatterns := map[*patterns.Pattern]string{
-		&instance.CallPattern:         callPatternKey,
-		&instance.FavoriteCallPattern: favoriteCallPatternKey,
+		&instance.CallPattern:         patternKeyCall,
+		&instance.FavoriteCallPattern: patternKeyFavoriteCall,
 	}
 
 	for property, patternKey := range configPatterns {
@@ -121,7 +124,7 @@ func New() (*Config, error) {
 		}
 	}
 
-	storedPatterns := cfgRaw.Section(storedPatternsSection)
+	storedPatterns := cfgRaw.Section(sectionStoredPatterns)
 	for _, value := range storedPatterns.Keys() {
 		pattern, err := parsePattern(value.String())
 		if err != nil {
@@ -152,8 +155,8 @@ func (receiver *Config) Save() error {
 	}
 
 	activePatterns := map[string]patterns.Pattern{
-		callPatternKey:         receiver.CallPattern,
-		favoriteCallPatternKey: receiver.FavoriteCallPattern,
+		patternKeyCall:         receiver.CallPattern,
+		patternKeyFavoriteCall: receiver.FavoriteCallPattern,
 	}
 
 	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
@@ -178,7 +181,7 @@ func (receiver *Config) Save() error {
 			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
 		}
 		patternJson := lo.Must(json.Marshal(pattern))
-		cfgRaw.Section(activePatternsSection).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
+		cfgRaw.Section(sectionActivePatterns).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
 	}
 
 	for name, pattern := range receiver.StoredPatterns {
@@ -186,7 +189,7 @@ func (receiver *Config) Save() error {
 			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
 		}
 		patternJson := lo.Must(json.Marshal(pattern))
-		cfgRaw.Section(storedPatternsSection).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
+		cfgRaw.Section(sectionStoredPatterns).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJson))
 	}
 
 	_ = cfgFile.Close()
