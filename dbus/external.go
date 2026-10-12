@@ -3,7 +3,11 @@ package dbus
 import (
 	"InariBlueNotifier/led"
 	"InariBlueNotifier/patterns"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -38,6 +42,22 @@ func (receiver *ExternalController) PlayPattern(pattern patterns.Pattern) *dbus.
 	}
 
 	return nil
+}
+
+func (receiver *ExternalController) PlayPatternJSON(pattern string) *dbus.Error {
+	var patternStruct patterns.Pattern
+
+	decoder := json.NewDecoder(strings.NewReader(pattern))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&patternStruct); err != nil {
+		return makeInvalidArgsError(err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return makeInvalidArgsError(errors.New("unexpected data after pattern JSON"))
+	}
+
+	return receiver.PlayPattern(patternStruct)
 }
 
 func (receiver *ExternalController) Stop() *dbus.Error {
@@ -99,4 +119,8 @@ func (receiver *ExternalController) Unregister(connection *dbus.Conn) error {
 	}
 
 	return nil
+}
+
+func makeInvalidArgsError(err error) *dbus.Error {
+	return dbus.NewError(dbus.ErrMsgInvalidArg.Name, []any{err.Error()})
 }
