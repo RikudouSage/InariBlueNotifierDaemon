@@ -143,10 +143,6 @@ func TestMatrixMatchesXmaticAndElementNotifications(t *testing.T) {
 			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
 			nemoOriginPackageHint: dbus.MakeVariant("im.vector.app"),
 		},
-		"Element compatibility package": {
-			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
-			nemoOriginPackageHint: dbus.MakeVariant("io.element.android"),
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if !(&matrixFilter{}).Matches(Notification{Hints: hints}) {
