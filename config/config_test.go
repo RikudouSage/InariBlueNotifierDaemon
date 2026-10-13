@@ -73,6 +73,35 @@ func TestNewLeavesEmailPatternUnsetAndEventDisabled(t *testing.T) {
 	}
 }
 
+func TestNewLeavesSignalPatternUnsetAndEventDisabled(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	if cfg.SignalPattern != nil {
+		t.Fatalf("Signal pattern = %#v, want nil so it inherits the notification pattern", cfg.SignalPattern)
+	}
+	if cfg.Events[EventSignal] {
+		t.Fatal("Signal event is enabled by default")
+	}
+
+	contents, err := os.ReadFile(filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini"))
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	enabled, err := saved.Section(sectionEvents).Key(patternKeySignal).Bool()
+	if err != nil || enabled {
+		t.Fatalf("saved config does not disable Signal event: enabled=%t err=%v", enabled, err)
+	}
+}
+
 func TestNewLeavesFavoriteCallPatternUnset(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
@@ -216,6 +245,33 @@ func TestSaveRemovesUnsetEmailPattern(t *testing.T) {
 	}
 	if saved.Section(sectionActivePatterns).HasKey(patternKeyEmail) {
 		t.Fatalf("saved config retained an unset email pattern:\n%s", contents)
+	}
+}
+
+func TestSaveAndLoadSignalSettings(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	pattern := patterns.RapidBlink
+	cfg.SignalPattern = &pattern
+	cfg.Events[EventSignal] = true
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save Signal settings: %v", err)
+	}
+
+	loaded, err := New()
+	if err != nil {
+		t.Fatalf("load Signal settings: %v", err)
+	}
+	if loaded.SignalPattern == nil || loaded.SignalPattern.Name != pattern.Name {
+		t.Fatalf("loaded Signal pattern = %#v, want %q", loaded.SignalPattern, pattern.Name)
+	}
+	if !loaded.Events[EventSignal] {
+		t.Fatal("loaded Signal event is disabled")
 	}
 }
 

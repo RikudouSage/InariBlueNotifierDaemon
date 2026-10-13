@@ -60,6 +60,52 @@ func TestDefaultMatcherIncludesEmailFilter(t *testing.T) {
 	}
 }
 
+func TestSignalMatchesSignalAndMollyAndroidNotifications(t *testing.T) {
+	for _, packageName := range []string{"org.thoughtcrime.securesms", "im.molly.app"} {
+		t.Run(packageName, func(t *testing.T) {
+			notification := Notification{Hints: map[string]dbus.Variant{
+				nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+				nemoOriginPackageHint: dbus.MakeVariant(packageName),
+			}}
+
+			if !(&signalFilter{}).Matches(notification) {
+				t.Fatalf("Signal filter did not match Android package %q", packageName)
+			}
+		})
+	}
+}
+
+func TestSignalRequiresAPKDBridgeAndKnownPackage(t *testing.T) {
+	for _, hints := range []map[string]dbus.Variant{
+		{
+			nemoOriginPackageHint: dbus.MakeVariant("org.thoughtcrime.securesms"),
+		},
+		{
+			nemoOwnerHint:         dbus.MakeVariant("another-owner"),
+			nemoOriginPackageHint: dbus.MakeVariant("org.thoughtcrime.securesms"),
+		},
+		{
+			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+			nemoOriginPackageHint: dbus.MakeVariant("io.element.android.x"),
+		},
+	} {
+		if (&signalFilter{}).Matches(Notification{Hints: hints}) {
+			t.Fatalf("Signal filter matched hints %#v", hints)
+		}
+	}
+}
+
+func TestDefaultMatcherIncludesSignalFilter(t *testing.T) {
+	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+		nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+		nemoOriginPackageHint: dbus.MakeVariant("im.molly.app"),
+	}})
+
+	if _, ok := matches["signal"]; !ok {
+		t.Fatal("default matcher did not classify a Molly notification as Signal")
+	}
+}
+
 func TestFromNotify(t *testing.T) {
 	notification, ok := FromNotify([]any{
 		"Messages", uint32(0), "icon-lock-sms", "Sender", "Text", []string{"default", ""}, map[string]dbus.Variant{}, int32(-1),

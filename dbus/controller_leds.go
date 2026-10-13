@@ -116,6 +116,25 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
+	case timeInRange && eventEnabled(config.EventSignal) && receiver.hasActiveNotificationFilter(string(config.EventSignal)):
+		pattern := receiver.config.NotificationPattern
+		if receiver.config.SignalPattern != nil {
+			pattern = *receiver.config.SignalPattern
+		}
+
+		log.Printf(
+			"LED update: requested_pattern=%s reason=active Signal notification notifications=%d",
+			pattern.Name,
+			len(receiver.activeNotifications),
+		)
+
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
+		}
+
+		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		return nil
+
 	case timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
 		pattern := receiver.config.NotificationPattern
 
