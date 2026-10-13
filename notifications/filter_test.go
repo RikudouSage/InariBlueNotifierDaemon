@@ -6,6 +6,30 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
+func TestIsNemoOwner(t *testing.T) {
+	notification := Notification{Hints: map[string]dbus.Variant{
+		nemoOwnerHint: dbus.MakeVariant("example-owner"),
+	}}
+
+	if !isNemoOwner(notification, "example-owner") {
+		t.Fatal("Nemo owner did not match")
+	}
+	if isNemoOwner(notification, "another-owner") {
+		t.Fatal("Nemo owner matched a different owner")
+	}
+}
+
+func TestIsNemoOwnerRejectsMissingOrNonStringHint(t *testing.T) {
+	for _, hints := range []map[string]dbus.Variant{
+		{},
+		{nemoOwnerHint: dbus.MakeVariant(true)},
+	} {
+		if isNemoOwner(Notification{Hints: hints}, "example-owner") {
+			t.Fatalf("Nemo owner matched hints %#v", hints)
+		}
+	}
+}
+
 func TestSMSMatchesFeedbackTokenAmongAdditionalTokens(t *testing.T) {
 	notification := Notification{Hints: map[string]dbus.Variant{
 		"x-nemo-feedback": dbus.MakeVariant("sms,sms_exists"),
