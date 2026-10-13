@@ -102,6 +102,22 @@ func TestNewLeavesSignalPatternUnsetAndEventDisabled(t *testing.T) {
 	}
 }
 
+func TestNewLeavesMatrixPatternUnsetAndEventDisabled(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	if cfg.MatrixPattern != nil {
+		t.Fatalf("Matrix pattern = %#v, want nil so it inherits the notification pattern", cfg.MatrixPattern)
+	}
+	if cfg.Events[EventMatrix] {
+		t.Fatal("Matrix event is enabled by default")
+	}
+}
+
 func TestNewLeavesFavoriteCallPatternUnset(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
@@ -272,6 +288,33 @@ func TestSaveAndLoadSignalSettings(t *testing.T) {
 	}
 	if !loaded.Events[EventSignal] {
 		t.Fatal("loaded Signal event is disabled")
+	}
+}
+
+func TestSaveAndLoadMatrixSettings(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	pattern := patterns.RapidBlink
+	cfg.MatrixPattern = &pattern
+	cfg.Events[EventMatrix] = true
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save Matrix settings: %v", err)
+	}
+
+	loaded, err := New()
+	if err != nil {
+		t.Fatalf("load Matrix settings: %v", err)
+	}
+	if loaded.MatrixPattern == nil || loaded.MatrixPattern.Name != pattern.Name {
+		t.Fatalf("loaded Matrix pattern = %#v, want %q", loaded.MatrixPattern, pattern.Name)
+	}
+	if !loaded.Events[EventMatrix] {
+		t.Fatal("loaded Matrix event is disabled")
 	}
 }
 

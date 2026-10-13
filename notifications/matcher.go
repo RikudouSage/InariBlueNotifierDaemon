@@ -13,6 +13,7 @@ func DefaultMatcher() *Matcher {
 		&smsFilter{},
 		&emailFilter{},
 		&signalFilter{},
+		&matrixFilter{},
 	)
 }
 

@@ -165,6 +165,36 @@ func TestSignalNotificationTracksSignalFilter(t *testing.T) {
 	}
 }
 
+func TestMatrixNotificationTracksMatrixFilter(t *testing.T) {
+	receiver := &controller{
+		notificationMatcher:      notifications.DefaultMatcher(),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
+	}
+
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		Body: validNotifyBody(map[string]dbus.Variant{
+			"x-nemo-owner": dbus.MakeVariant("xmatic"),
+		}),
+	})
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	})
+
+	if !receiver.hasActiveNotificationFilter("matrix") {
+		t.Fatal("active Xmatic notification did not retain the Matrix filter")
+	}
+}
+
 func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	receiver := &controller{
 		notificationMatcher:      notifications.DefaultMatcher(),

@@ -130,6 +130,53 @@ func TestDefaultMatcherIncludesSignalFilter(t *testing.T) {
 	}
 }
 
+func TestMatrixMatchesXmaticAndElementNotifications(t *testing.T) {
+	for name, hints := range map[string]map[string]dbus.Variant{
+		"native Xmatic": {
+			nemoOwnerHint: dbus.MakeVariant("xmatic"),
+		},
+		"Element X": {
+			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+			nemoOriginPackageHint: dbus.MakeVariant("io.element.android.x"),
+		},
+		"legacy Element": {
+			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+			nemoOriginPackageHint: dbus.MakeVariant("im.vector.app"),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !(&matrixFilter{}).Matches(Notification{Hints: hints}) {
+				t.Fatalf("Matrix filter did not match hints %#v", hints)
+			}
+		})
+	}
+}
+
+func TestMatrixRequiresKnownNativeOwnerOrAPKDPackage(t *testing.T) {
+	for _, hints := range []map[string]dbus.Variant{
+		{nemoOwnerHint: dbus.MakeVariant("another-owner")},
+		{nemoOriginPackageHint: dbus.MakeVariant("io.element.android.x")},
+		{
+			nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+			nemoOriginPackageHint: dbus.MakeVariant("org.thoughtcrime.securesms"),
+		},
+	} {
+		if (&matrixFilter{}).Matches(Notification{Hints: hints}) {
+			t.Fatalf("Matrix filter matched hints %#v", hints)
+		}
+	}
+}
+
+func TestDefaultMatcherIncludesMatrixFilter(t *testing.T) {
+	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+		nemoOwnerHint: dbus.MakeVariant("xmatic"),
+	}})
+
+	if _, ok := matches["matrix"]; !ok {
+		t.Fatal("default matcher did not classify an Xmatic notification as Matrix")
+	}
+}
+
 func TestFromNotify(t *testing.T) {
 	notification, ok := FromNotify([]any{
 		"Messages", uint32(0), "icon-lock-sms", "Sender", "Text", []string{"default", ""}, map[string]dbus.Variant{}, int32(-1),
