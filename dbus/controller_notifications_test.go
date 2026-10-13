@@ -69,3 +69,40 @@ func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
 		t.Fatalf("close result changed=%t active=%v, want one active notification", changed, receiver.activeNotifications)
 	}
 }
+
+func TestNonRemovableNotificationIsIgnored(t *testing.T) {
+	receiver := &controller{
+		activeNotifications:      make(map[uint32]struct{}),
+		pendingNotificationCalls: make(map[uint32]struct{}),
+	}
+
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		// Sailfish marks notifications that cannot be swiped away with this hint.
+		Body: []any{"app", uint32(0), "", "summary", "body", []string{}, map[string]dbus.Variant{
+			"x-nemo-user-removable": dbus.MakeVariant(false),
+		}, int32(-1)},
+	}); changed {
+		t.Fatal("non-removable Notify call changed active notification state")
+	}
+	if len(receiver.pendingNotificationCalls) != 0 {
+		t.Fatalf("pending notifications = %v, want none", receiver.pendingNotificationCalls)
+	}
+
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	}); changed {
+		t.Fatal("non-removable notification reply activated notification")
+	}
+	if len(receiver.activeNotifications) != 0 {
+		t.Fatalf("active notifications = %v, want none", receiver.activeNotifications)
+	}
+}

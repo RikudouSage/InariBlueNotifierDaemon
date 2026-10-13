@@ -88,6 +88,10 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 		if messageInterface(message) != notificationsInterface || messageMember(message) != notificationNotify {
 			return false
 		}
+		if !notificationIsUserRemovable(message.Body) {
+			log.Printf("ignored non-removable notification: serial=%d", message.Serial())
+			return false
+		}
 
 		receiver.pendingNotificationCalls[message.Serial()] = struct{}{}
 		log.Printf("notification notify: serial=%d pending=%d", message.Serial(), len(receiver.pendingNotificationCalls))
@@ -174,4 +178,27 @@ func notificationID(body []any) (uint32, bool) {
 	}
 	id, ok := body[0].(uint32)
 	return id, ok
+}
+
+// notificationIsUserRemovable reports whether a Sailfish notification can be
+// dismissed manually. Lipstick uses the x-nemo-user-removable hint for this,
+// defaulting it to true when the hint is absent.
+func notificationIsUserRemovable(body []any) bool {
+	const hintsIndex = 6
+	if len(body) <= hintsIndex {
+		return true
+	}
+
+	hints, ok := body[hintsIndex].(map[string]dbus.Variant)
+	if !ok {
+		return true
+	}
+
+	userRemovable, ok := hints["x-nemo-user-removable"]
+	if !ok {
+		return true
+	}
+
+	removable, ok := userRemovable.Value().(bool)
+	return !ok || removable
 }
