@@ -3,6 +3,7 @@ package dbus
 import (
 	"InariBlueNotifier/config"
 	"log"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -22,8 +23,27 @@ func (receiver *controller) updateLED() error {
 		return enabled
 	}
 
+	timeInRange := func(now time.Time) bool {
+		if receiver.config == nil {
+			return true
+		}
+
+		start := receiver.config.Constraints.StartTime
+		end := receiver.config.Constraints.EndTime
+
+		success := true
+		if !start.IsZero() && start.After(now) {
+			success = false
+		}
+		if !end.IsZero() && end.Before(now) {
+			success = false
+		}
+
+		return success
+	}(receiver.now())
+
 	switch {
-	case eventEnabled(config.EventFavoriteCall) && hasFavoriteCall(receiver.incomingCalls):
+	case timeInRange && eventEnabled(config.EventFavoriteCall) && hasFavoriteCall(receiver.incomingCalls):
 		pattern := receiver.config.FavoriteCallPattern
 
 		log.Printf(
@@ -39,7 +59,7 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
-	case eventEnabled(config.EventCall) && len(receiver.incomingCalls) > 0:
+	case timeInRange && eventEnabled(config.EventCall) && len(receiver.incomingCalls) > 0:
 		pattern := receiver.config.CallPattern
 
 		log.Printf(
@@ -55,7 +75,7 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
-	case eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
+	case timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
 		pattern := receiver.config.NotificationPattern
 
 		log.Printf(
@@ -72,7 +92,12 @@ func (receiver *controller) updateLED() error {
 		return nil
 
 	default:
-		log.Printf("LED update: requested_stop reason=no incoming calls or active notifications")
+		reason := "no incoming calls or active notifications"
+		if !timeInRange {
+			reason = "outside of allowed hours"
+		}
+
+		log.Printf("LED update: requested_stop reason=%s", reason)
 		if err := receiver.ledController.Stop(); err != nil {
 			return err
 		}

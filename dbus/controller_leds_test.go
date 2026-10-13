@@ -4,6 +4,7 @@ import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/patterns"
 	"testing"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -41,6 +42,7 @@ func TestUpdateLEDAppliesCallPattern(t *testing.T) {
 		incomingCalls: map[dbus.ObjectPath]bool{
 			"/calls/one": false,
 		},
+		now: time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -65,6 +67,7 @@ func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 			"/calls/one": false,
 			"/calls/two": true,
 		},
+		now: time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -89,6 +92,7 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 		activeNotifications: map[uint32]struct{}{
 			1: {},
 		},
+		now: time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -107,6 +111,7 @@ func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
 		activeNotifications: map[uint32]struct{}{
 			1: {},
 		},
+		now: time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -129,6 +134,7 @@ func TestUpdateLEDKeepsCallPatternOverNotificationPattern(t *testing.T) {
 		},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
 		activeNotifications: map[uint32]struct{}{1: {}},
+		now:                 time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -155,6 +161,7 @@ func TestUpdateLEDSkipsDisabledCallForEnabledNotification(t *testing.T) {
 		},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
 		activeNotifications: map[uint32]struct{}{1: {}},
+		now:                 time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -180,6 +187,7 @@ func TestUpdateLEDSkipsDisabledFavouritePattern(t *testing.T) {
 			},
 		},
 		incomingCalls: map[dbus.ObjectPath]bool{"/calls/one": true},
+		now:           time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -201,6 +209,7 @@ func TestUpdateLEDStopsWhenAllActiveEventsAreDisabled(t *testing.T) {
 		}},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
 		activeNotifications: map[uint32]struct{}{1: {}},
+		now:                 time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -213,7 +222,7 @@ func TestUpdateLEDStopsWhenAllActiveEventsAreDisabled(t *testing.T) {
 
 func TestUpdateLEDStopsWhenThereAreNoEvents(t *testing.T) {
 	ledController := &recordingLEDController{}
-	receiver := &controller{ledController: ledController}
+	receiver := &controller{ledController: ledController, now: time.Now}
 
 	if err := receiver.updateLED(); err != nil {
 		t.Fatalf("update LED: %v", err)
