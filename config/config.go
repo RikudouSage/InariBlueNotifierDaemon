@@ -51,7 +51,7 @@ type Config struct {
 	StoredPatterns map[string]patterns.Pattern
 
 	CallPattern         patterns.Pattern
-	FavoriteCallPattern patterns.Pattern
+	FavoriteCallPattern *patterns.Pattern
 	NotificationPattern patterns.Pattern
 	SMSPattern          *patterns.Pattern
 
@@ -76,9 +76,8 @@ func (receiver *Config) patternConfigs() map[string]patternConfig {
 			set:          func(pattern *patterns.Pattern) { receiver.CallPattern = *pattern },
 		},
 		patternKeyFavoriteCall: {
-			defaultValue: new(patterns.DefaultCallPattern),
-			get:          func() *patterns.Pattern { return &receiver.FavoriteCallPattern },
-			set:          func(pattern *patterns.Pattern) { receiver.FavoriteCallPattern = *pattern },
+			get: func() *patterns.Pattern { return receiver.FavoriteCallPattern },
+			set: func(pattern *patterns.Pattern) { receiver.FavoriteCallPattern = pattern },
 		},
 		patternKeyNotification: {
 			defaultValue: new(patterns.DefaultNotificationPattern),

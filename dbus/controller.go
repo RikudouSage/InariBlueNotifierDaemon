@@ -61,7 +61,6 @@ func NewControllerWithConfig(
 	if configuration == nil {
 		configuration = &config.Config{
 			CallPattern:         patterns.DefaultCallPattern,
-			FavoriteCallPattern: patterns.DefaultCallPattern,
 			NotificationPattern: patterns.DefaultNotificationPattern,
 		}
 	}

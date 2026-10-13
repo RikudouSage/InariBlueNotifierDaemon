@@ -44,7 +44,10 @@ func (receiver *controller) updateLED() error {
 
 	switch {
 	case timeInRange && eventEnabled(config.EventFavoriteCall) && hasFavoriteCall(receiver.incomingCalls):
-		pattern := receiver.config.FavoriteCallPattern
+		pattern := receiver.config.CallPattern
+		if receiver.config.FavoriteCallPattern != nil {
+			pattern = *receiver.config.FavoriteCallPattern
+		}
 
 		log.Printf(
 			"LED update: requested_pattern=%s reason=incoming favourite call incoming_calls=%d",
