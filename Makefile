@@ -28,3 +28,6 @@ rpm: build pull
 			cp -r /share/* .; \
 			mb2 -t "$(SDK_TARGET)" build; \
 			cp RPMS/*.rpm /share/$(RPM_OUT)/'
+
+sniffer:
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false -mod=readonly -trimpath -o notification-sniffer .
