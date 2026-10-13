@@ -89,10 +89,8 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 				config.EventNotification: true,
 			},
 		},
-		activeNotifications: map[uint32]struct{}{
-			1: {},
-		},
-		now: time.Now,
+		activeNotifications: trackedNotifications(1),
+		now:                 time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -103,15 +101,111 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 	}
 }
 
-func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
+func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testing.T) {
+	sms := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
 		ledController: ledController,
-		config:        &config.Config{NotificationPattern: patterns.RapidBlink},
-		activeNotifications: map[uint32]struct{}{
-			1: {},
+		config: &config.Config{
+			SMSPattern: &sms,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventSMS:          true,
+			},
 		},
-		now: time.Now,
+		activeNotifications: trackedSMSNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != sms.Name {
+		t.Fatalf("applied pattern = %q, want SMS pattern %q", ledController.lastPattern.Name, sms.Name)
+	}
+}
+
+func TestUpdateLEDUsesNotificationPatternForSMSWhenSMSPatternIsUnset(t *testing.T) {
+	notification := patterns.SlowBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: notification,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventSMS:          true,
+			},
+		},
+		activeNotifications: trackedSMSNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != notification.Name {
+		t.Fatalf("applied pattern = %q, want notification pattern %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
+func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
+	notification := patterns.SlowBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: notification,
+			SMSPattern:          &patterns.RapidBlink,
+			Events: map[config.EventType]bool{
+				config.EventNotification: true,
+				config.EventSMS:          false,
+			},
+		},
+		activeNotifications: trackedSMSNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != notification.Name {
+		t.Fatalf("applied pattern = %q, want generic notification pattern %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
+func TestUpdateLEDPrioritizesSMSOverGenericNotifications(t *testing.T) {
+	sms := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: patterns.SlowBlink,
+			SMSPattern:          &sms,
+			Events: map[config.EventType]bool{
+				config.EventNotification: true,
+				config.EventSMS:          true,
+			},
+		},
+		activeNotifications: trackedSMSNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != sms.Name {
+		t.Fatalf("applied pattern = %q, want SMS pattern %q", ledController.lastPattern.Name, sms.Name)
+	}
+}
+
+func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController:       ledController,
+		config:              &config.Config{NotificationPattern: patterns.RapidBlink},
+		activeNotifications: trackedNotifications(1),
+		now:                 time.Now,
 	}
 
 	if err := receiver.updateLED(); err != nil {
@@ -133,7 +227,7 @@ func TestUpdateLEDKeepsCallPatternOverNotificationPattern(t *testing.T) {
 			NotificationPattern: notification,
 		},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
-		activeNotifications: map[uint32]struct{}{1: {}},
+		activeNotifications: trackedNotifications(1),
 		now:                 time.Now,
 	}
 
@@ -160,7 +254,7 @@ func TestUpdateLEDSkipsDisabledCallForEnabledNotification(t *testing.T) {
 			},
 		},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
-		activeNotifications: map[uint32]struct{}{1: {}},
+		activeNotifications: trackedNotifications(1),
 		now:                 time.Now,
 	}
 
@@ -208,7 +302,7 @@ func TestUpdateLEDStopsWhenAllActiveEventsAreDisabled(t *testing.T) {
 			config.EventNotification: false,
 		}},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
-		activeNotifications: map[uint32]struct{}{1: {}},
+		activeNotifications: trackedNotifications(1),
 		now:                 time.Now,
 	}
 
@@ -230,4 +324,14 @@ func TestUpdateLEDStopsWhenThereAreNoEvents(t *testing.T) {
 	if !ledController.stopped {
 		t.Fatal("LED controller was not stopped")
 	}
+}
+
+func trackedSMSNotifications(ids ...uint32) map[uint32]trackedNotification {
+	result := trackedNotifications(ids...)
+	for id := range result {
+		result[id] = trackedNotification{filters: map[string]struct{}{
+			string(config.EventSMS): {},
+		}}
+	}
+	return result
 }

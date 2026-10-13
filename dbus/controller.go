@@ -3,6 +3,7 @@ package dbus
 import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/led"
+	"InariBlueNotifier/notifications"
 	"InariBlueNotifier/patterns"
 	"context"
 	"errors"
@@ -29,8 +30,9 @@ type Controller interface {
 }
 
 type controller struct {
-	connection    *dbus.Conn
-	ledController led.Controller
+	connection          *dbus.Conn
+	ledController       led.Controller
+	notificationMatcher *notifications.Matcher
 
 	now func() time.Time
 
@@ -43,19 +45,8 @@ type controller struct {
 	// incomingCalls maps each ringing call to whether its caller is a favourite.
 	incomingCalls map[dbus.ObjectPath]bool
 
-	// activeNotifications contains notification IDs returned by the notification
-	// server. pendingNotificationCalls maps Notify request serials until the
-	// server assigns their IDs.
-	activeNotifications      map[uint32]struct{}
-	pendingNotificationCalls map[uint32]struct{}
-}
-
-func NewController(connection *dbus.Conn, ledController led.Controller) Controller {
-	return NewControllerWithConfig(connection, ledController, &config.Config{
-		CallPattern:         patterns.DefaultCallPattern,
-		FavoriteCallPattern: patterns.DefaultCallPattern,
-		NotificationPattern: patterns.DefaultNotificationPattern,
-	})
+	activeNotifications      map[uint32]trackedNotification
+	pendingNotificationCalls map[uint32]trackedNotification
 }
 
 // NewControllerWithConfig creates a controller that uses the configured call
@@ -65,6 +56,7 @@ func NewControllerWithConfig(
 	connection *dbus.Conn,
 	ledController led.Controller,
 	configuration *config.Config,
+	matcher *notifications.Matcher,
 ) Controller {
 	if configuration == nil {
 		configuration = &config.Config{
@@ -77,10 +69,11 @@ func NewControllerWithConfig(
 	return &controller{
 		connection:               connection,
 		ledController:            ledController,
+		notificationMatcher:      matcher,
 		config:                   configuration,
 		incomingCalls:            make(map[dbus.ObjectPath]bool),
-		activeNotifications:      make(map[uint32]struct{}),
-		pendingNotificationCalls: make(map[uint32]struct{}),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
 		now:                      time.Now,
 	}
 }
@@ -124,8 +117,8 @@ func (receiver *controller) Start() error {
 	receiver.cancel = cancel
 	receiver.done = make(chan struct{})
 	receiver.incomingCalls = make(map[dbus.ObjectPath]bool)
-	receiver.activeNotifications = make(map[uint32]struct{})
-	receiver.pendingNotificationCalls = make(map[uint32]struct{})
+	receiver.activeNotifications = make(map[uint32]trackedNotification)
+	receiver.pendingNotificationCalls = make(map[uint32]trackedNotification)
 
 	var watchers sync.WaitGroup
 	watchers.Go(func() {
