@@ -267,6 +267,30 @@ func TestUpdateLEDUsesNotificationPatternForSignalWhenSignalPatternIsUnset(t *te
 	}
 }
 
+func TestUpdateLEDAppliesMatrixPatternWhenGenericNotificationsAreDisabled(t *testing.T) {
+	matrix := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			MatrixPattern: &matrix,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventMatrix:       true,
+			},
+		},
+		activeNotifications: trackedMatrixNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != matrix.Name {
+		t.Fatalf("applied pattern = %q, want Matrix pattern %q", ledController.lastPattern.Name, matrix.Name)
+	}
+}
+
 func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
@@ -469,6 +493,16 @@ func trackedSignalNotifications(ids ...uint32) map[uint32]trackedNotification {
 	for id := range result {
 		result[id] = trackedNotification{filters: map[string]struct{}{
 			string(config.EventSignal): {},
+		}}
+	}
+	return result
+}
+
+func trackedMatrixNotifications(ids ...uint32) map[uint32]trackedNotification {
+	result := trackedNotifications(ids...)
+	for id := range result {
+		result[id] = trackedNotification{filters: map[string]struct{}{
+			string(config.EventMatrix): {},
 		}}
 	}
 	return result
