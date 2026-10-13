@@ -37,7 +37,7 @@ func TestUpdateLEDAppliesCallPattern(t *testing.T) {
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         normal,
-			FavoriteCallPattern: favourite,
+			FavoriteCallPattern: &favourite,
 		},
 		incomingCalls: map[dbus.ObjectPath]bool{
 			"/calls/one": false,
@@ -61,7 +61,7 @@ func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         normal,
-			FavoriteCallPattern: favourite,
+			FavoriteCallPattern: &favourite,
 		},
 		incomingCalls: map[dbus.ObjectPath]bool{
 			"/calls/one": false,
@@ -75,6 +75,28 @@ func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 	}
 	if ledController.lastPattern.Name != favourite.Name {
 		t.Fatalf("applied pattern = %q, want %q", ledController.lastPattern.Name, favourite.Name)
+	}
+}
+
+func TestUpdateLEDUsesCallPatternForFavouriteCallWhenFavoriteCallPatternIsUnset(t *testing.T) {
+	call := patterns.SlowBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			CallPattern: call,
+		},
+		incomingCalls: map[dbus.ObjectPath]bool{
+			"/calls/one": true,
+		},
+		now: time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != call.Name {
+		t.Fatalf("applied pattern = %q, want call pattern %q", ledController.lastPattern.Name, call.Name)
 	}
 }
 
@@ -274,7 +296,7 @@ func TestUpdateLEDSkipsDisabledFavouritePattern(t *testing.T) {
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         call,
-			FavoriteCallPattern: favourite,
+			FavoriteCallPattern: &favourite,
 			Events: map[config.EventType]bool{
 				config.EventCall:         true,
 				config.EventFavoriteCall: false,

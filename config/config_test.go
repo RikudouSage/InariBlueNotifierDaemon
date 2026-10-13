@@ -44,6 +44,19 @@ func TestNewLeavesSMSPatternUnset(t *testing.T) {
 	}
 }
 
+func TestNewLeavesFavoriteCallPatternUnset(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	if cfg.FavoriteCallPattern != nil {
+		t.Fatalf("favorite call pattern = %#v, want nil so it inherits the call pattern", cfg.FavoriteCallPattern)
+	}
+}
+
 func TestNewMigratesConfigWithoutSMSSettings(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
@@ -109,7 +122,43 @@ func TestSaveRemovesUnsetSMSPattern(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read saved config: %v", err)
 	}
-	if strings.Contains(string(contents), "sms =") {
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	if saved.Section(sectionActivePatterns).HasKey(patternKeySMS) {
 		t.Fatalf("saved config retained an unset SMS pattern:\n%s", contents)
+	}
+}
+
+func TestSaveRemovesUnsetFavoriteCallPattern(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	pattern := patterns.RapidBlink
+	cfg.FavoriteCallPattern = &pattern
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save favorite call pattern: %v", err)
+	}
+
+	cfg.FavoriteCallPattern = nil
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save without favorite call pattern: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini"))
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	if saved.Section(sectionActivePatterns).HasKey(patternKeyFavoriteCall) {
+		t.Fatalf("saved config retained an unset favorite call pattern:\n%s", contents)
 	}
 }
