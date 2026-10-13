@@ -30,4 +30,4 @@ rpm: build pull
 			cp RPMS/*.rpm /share/$(RPM_OUT)/'
 
 sniffer:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false -mod=readonly -trimpath -o notification-sniffer .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -buildvcs=false -mod=readonly -trimpath -o notification-sniffer ./cmd/notification-sniffer
