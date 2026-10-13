@@ -21,6 +21,7 @@ const (
 	patternKeyFavoriteCall = "favoriteCall"
 	patternKeyNotification = "notification"
 	patternKeySMS          = "sms"
+	patternKeyEmail        = "email"
 
 	sectionStoredPatterns = "storedPatterns"
 	sectionActivePatterns = "activePatterns"
@@ -38,6 +39,7 @@ const (
 	EventFavoriteCall EventType = patternKeyFavoriteCall
 	EventNotification EventType = patternKeyNotification
 	EventSMS          EventType = patternKeySMS
+	EventEmail        EventType = patternKeyEmail
 )
 
 type Constraints struct {
@@ -54,6 +56,7 @@ type Config struct {
 	FavoriteCallPattern *patterns.Pattern
 	NotificationPattern patterns.Pattern
 	SMSPattern          *patterns.Pattern
+	EmailPattern        *patterns.Pattern
 
 	Events      map[EventType]bool
 	Constraints Constraints
@@ -87,6 +90,10 @@ func (receiver *Config) patternConfigs() map[string]patternConfig {
 		patternKeySMS: {
 			get: func() *patterns.Pattern { return receiver.SMSPattern },
 			set: func(pattern *patterns.Pattern) { receiver.SMSPattern = pattern },
+		},
+		patternKeyEmail: {
+			get: func() *patterns.Pattern { return receiver.EmailPattern },
+			set: func(pattern *patterns.Pattern) { receiver.EmailPattern = pattern },
 		},
 	}
 }
@@ -204,12 +211,13 @@ func New() (*Config, error) {
 			instance.Events[EventType(key.Name())] = false
 		}
 	}
-	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification, EventSMS}
+	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification, EventSMS, EventEmail}
 	for _, key := range defaultKeys {
 		if _, ok := instance.Events[key]; !ok {
 			instance.Events[key] = !slices.Contains([]EventType{
 				EventNotification,
 				EventSMS,
+				EventEmail,
 			}, key)
 			changedConfig = true
 		}
