@@ -6,6 +6,7 @@ import (
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/devices"
 	"InariBlueNotifier/led"
+	"InariBlueNotifier/notifications"
 	"context"
 	"errors"
 	"fmt"
@@ -24,7 +25,8 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 		return nil, fmt.Errorf("register external controller: %w", err)
 	}
 
-	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg)
+	notificationMatcher := notifications.DefaultMatcher()
+	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
 	if err := mainController.Start(); err != nil {
 		cleanupErr := externalController.Unregister(sessionBus)
 		return nil, errors.Join(

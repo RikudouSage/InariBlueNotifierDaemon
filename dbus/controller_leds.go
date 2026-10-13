@@ -12,12 +12,12 @@ func (receiver *controller) updateLED() error {
 	eventEnabled := func(event config.EventType) bool {
 		// Missing event settings use the same defaults as a newly created config.
 		if receiver.config == nil || receiver.config.Events == nil {
-			return event != config.EventNotification
+			return event == config.EventCall || event == config.EventFavoriteCall
 		}
 
 		enabled, configured := receiver.config.Events[event]
 		if !configured {
-			return event != config.EventNotification
+			return event == config.EventCall || event == config.EventFavoriteCall
 		}
 
 		return enabled
@@ -75,6 +75,22 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
+	case timeInRange && eventEnabled(config.EventSMS) && receiver.hasActiveNotificationFilter(string(config.EventSMS)):
+		pattern := receiver.config.SMSPattern
+
+		log.Printf(
+			"LED update: requested_pattern=%s reason=active SMS notification notifications=%d",
+			pattern.Name,
+			len(receiver.activeNotifications),
+		)
+
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
+		}
+
+		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		return nil
+
 	case timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
 		pattern := receiver.config.NotificationPattern
 
@@ -105,6 +121,16 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: stopped")
 		return nil
 	}
+}
+
+func (receiver *controller) hasActiveNotificationFilter(filter string) bool {
+	for _, notification := range receiver.activeNotifications {
+		if _, matches := notification.filters[filter]; matches {
+			return true
+		}
+	}
+
+	return false
 }
 
 func hasFavoriteCall(calls map[dbus.ObjectPath]bool) bool {

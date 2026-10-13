@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"log"
 
+	"InariBlueNotifier/notifications"
+
 	"github.com/godbus/dbus/v5"
 )
+
+type trackedNotification struct {
+	filters map[string]struct{}
+}
 
 const (
 	notificationsInterface = "org.freedesktop.Notifications"
@@ -88,12 +94,19 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 		if messageInterface(message) != notificationsInterface || messageMember(message) != notificationNotify {
 			return false
 		}
-		if !notificationIsUserRemovable(message.Body) {
+		notification, ok := notifications.FromNotify(message.Body)
+		if !ok {
+			log.Printf("ignored notification with invalid Notify body: serial=%d body=%#v", message.Serial(), message.Body)
+			return false
+		}
+		if !notification.IsUserRemovable() {
 			log.Printf("ignored non-removable notification: serial=%d", message.Serial())
 			return false
 		}
 
-		receiver.pendingNotificationCalls[message.Serial()] = struct{}{}
+		receiver.pendingNotificationCalls[message.Serial()] = trackedNotification{
+			filters: receiver.notificationMatcher.Match(notification),
+		}
 		log.Printf("notification notify: serial=%d pending=%d", message.Serial(), len(receiver.pendingNotificationCalls))
 
 		return false
@@ -104,7 +117,8 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 			return false
 		}
 
-		if _, ok := receiver.pendingNotificationCalls[replySerial]; !ok {
+		pending, ok := receiver.pendingNotificationCalls[replySerial]
+		if !ok {
 			return false
 		}
 		delete(receiver.pendingNotificationCalls, replySerial)
@@ -116,7 +130,7 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 		}
 
 		_, alreadyActive := receiver.activeNotifications[id]
-		receiver.activeNotifications[id] = struct{}{}
+		receiver.activeNotifications[id] = pending
 		log.Printf("notification active: id=%d reply_serial=%d active_notifications=%d", id, replySerial, len(receiver.activeNotifications))
 
 		return !alreadyActive
@@ -178,27 +192,4 @@ func notificationID(body []any) (uint32, bool) {
 	}
 	id, ok := body[0].(uint32)
 	return id, ok
-}
-
-// notificationIsUserRemovable reports whether a Sailfish notification can be
-// dismissed manually. Lipstick uses the x-nemo-user-removable hint for this,
-// defaulting it to true when the hint is absent.
-func notificationIsUserRemovable(body []any) bool {
-	const hintsIndex = 6
-	if len(body) <= hintsIndex {
-		return true
-	}
-
-	hints, ok := body[hintsIndex].(map[string]dbus.Variant)
-	if !ok {
-		return true
-	}
-
-	userRemovable, ok := hints["x-nemo-user-removable"]
-	if !ok {
-		return true
-	}
-
-	removable, ok := userRemovable.Value().(bool)
-	return !ok || removable
 }

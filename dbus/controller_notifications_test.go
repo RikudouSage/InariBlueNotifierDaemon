@@ -1,6 +1,7 @@
 package dbus
 
 import (
+	"InariBlueNotifier/notifications"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
@@ -8,8 +9,9 @@ import (
 
 func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
 	receiver := &controller{
-		activeNotifications:      make(map[uint32]struct{}),
-		pendingNotificationCalls: make(map[uint32]struct{}),
+		notificationMatcher:      notifications.DefaultMatcher(),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
 	}
 
 	// Locally constructed D-Bus messages use serial zero. It is sufficient here
@@ -20,6 +22,7 @@ func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
 			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
 			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
 		},
+		Body: validNotifyBody(nil),
 	}); changed {
 		t.Fatal("Notify call changed active notification state before its reply")
 	}
@@ -54,7 +57,8 @@ func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
 
 func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
 	receiver := &controller{
-		activeNotifications: map[uint32]struct{}{1: {}, 2: {}},
+		notificationMatcher: notifications.DefaultMatcher(),
+		activeNotifications: trackedNotifications(1, 2),
 	}
 
 	changed := receiver.handleNotificationMessage(&dbus.Message{
@@ -70,10 +74,41 @@ func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
 	}
 }
 
+func TestSMSNotificationTracksSMSFilter(t *testing.T) {
+	receiver := &controller{
+		notificationMatcher:      notifications.DefaultMatcher(),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
+	}
+
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		Body: validNotifyBody(map[string]dbus.Variant{
+			"x-nemo-feedback": dbus.MakeVariant("sms,sms_exists"),
+		}),
+	})
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	})
+
+	if !receiver.hasActiveNotificationFilter("sms") {
+		t.Fatal("active SMS notification did not retain the SMS filter")
+	}
+}
+
 func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	receiver := &controller{
-		activeNotifications:      make(map[uint32]struct{}),
-		pendingNotificationCalls: make(map[uint32]struct{}),
+		notificationMatcher:      notifications.DefaultMatcher(),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
 	}
 
 	if changed := receiver.handleNotificationMessage(&dbus.Message{
@@ -105,4 +140,19 @@ func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	if len(receiver.activeNotifications) != 0 {
 		t.Fatalf("active notifications = %v, want none", receiver.activeNotifications)
 	}
+}
+
+func validNotifyBody(hints map[string]dbus.Variant) []any {
+	if hints == nil {
+		hints = make(map[string]dbus.Variant)
+	}
+	return []any{"app", uint32(0), "", "summary", "body", []string{}, hints, int32(-1)}
+}
+
+func trackedNotifications(ids ...uint32) map[uint32]trackedNotification {
+	result := make(map[uint32]trackedNotification, len(ids))
+	for _, id := range ids {
+		result[id] = trackedNotification{}
+	}
+	return result
 }

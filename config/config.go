@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	"github.com/samber/lo"
@@ -19,6 +20,7 @@ const (
 	patternKeyCall         = "call"
 	patternKeyFavoriteCall = "favoriteCall"
 	patternKeyNotification = "notification"
+	patternKeySMS          = "sms"
 
 	sectionStoredPatterns = "storedPatterns"
 	sectionActivePatterns = "activePatterns"
@@ -35,6 +37,7 @@ const (
 	EventCall         EventType = patternKeyCall
 	EventFavoriteCall EventType = patternKeyFavoriteCall
 	EventNotification EventType = patternKeyNotification
+	EventSMS          EventType = patternKeySMS
 )
 
 type Constraints struct {
@@ -50,6 +53,7 @@ type Config struct {
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern patterns.Pattern
 	NotificationPattern patterns.Pattern
+	SMSPattern          patterns.Pattern
 
 	Events      map[EventType]bool
 	Constraints Constraints
@@ -77,7 +81,7 @@ func New() (*Config, error) {
 	instance := &Config{
 		cfgFilePath:    cfgFilePath,
 		StoredPatterns: make(map[string]patterns.Pattern),
-		Events:         make(map[EventType]bool, 3),
+		Events:         make(map[EventType]bool, 4),
 	}
 
 	changedConfig := false
@@ -137,6 +141,7 @@ func New() (*Config, error) {
 		&instance.CallPattern:         {key: patternKeyCall, defaultVal: patterns.DefaultCallPattern},
 		&instance.FavoriteCallPattern: {key: patternKeyFavoriteCall, defaultVal: patterns.DefaultCallPattern},
 		&instance.NotificationPattern: {key: patternKeyNotification, defaultVal: patterns.DefaultNotificationPattern},
+		&instance.SMSPattern:          {key: patternKeySMS, defaultVal: patterns.DefaultNotificationPattern},
 	}
 
 	for property, patternData := range configPatterns {
@@ -176,10 +181,13 @@ func New() (*Config, error) {
 			instance.Events[EventType(key.Name())] = false
 		}
 	}
-	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification}
+	defaultKeys := []EventType{EventCall, EventFavoriteCall, EventNotification, EventSMS}
 	for _, key := range defaultKeys {
 		if _, ok := instance.Events[key]; !ok {
-			instance.Events[key] = key != EventNotification
+			instance.Events[key] = !slices.Contains([]EventType{
+				EventNotification,
+				EventSMS,
+			}, key)
 			changedConfig = true
 		}
 	}
@@ -216,6 +224,7 @@ func (receiver *Config) Save() error {
 		patternKeyCall:         receiver.CallPattern,
 		patternKeyFavoriteCall: receiver.FavoriteCallPattern,
 		patternKeyNotification: receiver.NotificationPattern,
+		patternKeySMS:          receiver.SMSPattern,
 	}
 
 	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
