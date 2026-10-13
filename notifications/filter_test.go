@@ -26,6 +26,40 @@ func TestSMSDoesNotMatchPartialFeedbackToken(t *testing.T) {
 	}
 }
 
+func TestEmailMatchesFeedbackTokens(t *testing.T) {
+	for _, feedback := range []string{"email", "email_exists"} {
+		t.Run(feedback, func(t *testing.T) {
+			notification := Notification{Hints: map[string]dbus.Variant{
+				"x-nemo-feedback": dbus.MakeVariant(feedback),
+			}}
+
+			if !(&emailFilter{}).Matches(notification) {
+				t.Fatalf("email filter did not match %q feedback token", feedback)
+			}
+		})
+	}
+}
+
+func TestEmailDoesNotMatchPartialFeedbackToken(t *testing.T) {
+	notification := Notification{Hints: map[string]dbus.Variant{
+		"x-nemo-feedback": dbus.MakeVariant("voicemail_exists"),
+	}}
+
+	if (&emailFilter{}).Matches(notification) {
+		t.Fatal("email filter matched a non-email feedback token")
+	}
+}
+
+func TestDefaultMatcherIncludesEmailFilter(t *testing.T) {
+	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+		"x-nemo-feedback": dbus.MakeVariant("email_exists"),
+	}})
+
+	if _, ok := matches["email"]; !ok {
+		t.Fatal("default matcher did not classify an email notification")
+	}
+}
+
 func TestFromNotify(t *testing.T) {
 	notification, ok := FromNotify([]any{
 		"Messages", uint32(0), "icon-lock-sms", "Sender", "Text", []string{"default", ""}, map[string]dbus.Variant{}, int32(-1),

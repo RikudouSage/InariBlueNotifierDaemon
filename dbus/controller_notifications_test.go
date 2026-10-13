@@ -104,6 +104,36 @@ func TestSMSNotificationTracksSMSFilter(t *testing.T) {
 	}
 }
 
+func TestEmailNotificationTracksEmailFilter(t *testing.T) {
+	receiver := &controller{
+		notificationMatcher:      notifications.DefaultMatcher(),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
+	}
+
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		Body: validNotifyBody(map[string]dbus.Variant{
+			"x-nemo-feedback": dbus.MakeVariant("email_exists"),
+		}),
+	})
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	})
+
+	if !receiver.hasActiveNotificationFilter("email") {
+		t.Fatal("active email notification did not retain the email filter")
+	}
+}
+
 func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	receiver := &controller{
 		notificationMatcher:      notifications.DefaultMatcher(),

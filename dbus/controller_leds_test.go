@@ -171,6 +171,54 @@ func TestUpdateLEDUsesNotificationPatternForSMSWhenSMSPatternIsUnset(t *testing.
 	}
 }
 
+func TestUpdateLEDAppliesEmailPatternWhenGenericNotificationsAreDisabled(t *testing.T) {
+	email := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			EmailPattern: &email,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventEmail:        true,
+			},
+		},
+		activeNotifications: trackedEmailNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != email.Name {
+		t.Fatalf("applied pattern = %q, want email pattern %q", ledController.lastPattern.Name, email.Name)
+	}
+}
+
+func TestUpdateLEDUsesNotificationPatternForEmailWhenEmailPatternIsUnset(t *testing.T) {
+	notification := patterns.SlowBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: notification,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventEmail:        true,
+			},
+		},
+		activeNotifications: trackedEmailNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != notification.Name {
+		t.Fatalf("applied pattern = %q, want notification pattern %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
 func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
@@ -353,6 +401,16 @@ func trackedSMSNotifications(ids ...uint32) map[uint32]trackedNotification {
 	for id := range result {
 		result[id] = trackedNotification{filters: map[string]struct{}{
 			string(config.EventSMS): {},
+		}}
+	}
+	return result
+}
+
+func trackedEmailNotifications(ids ...uint32) map[uint32]trackedNotification {
+	result := trackedNotifications(ids...)
+	for id := range result {
+		result[id] = trackedNotification{filters: map[string]struct{}{
+			string(config.EventEmail): {},
 		}}
 	}
 	return result

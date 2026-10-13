@@ -11,6 +11,7 @@ func NewMatcher(filters ...Filter) *Matcher {
 func DefaultMatcher() *Matcher {
 	return NewMatcher(
 		&smsFilter{},
+		&emailFilter{},
 	)
 }
 

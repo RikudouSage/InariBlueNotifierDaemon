@@ -44,6 +44,35 @@ func TestNewLeavesSMSPatternUnset(t *testing.T) {
 	}
 }
 
+func TestNewLeavesEmailPatternUnsetAndEventDisabled(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	if cfg.EmailPattern != nil {
+		t.Fatalf("email pattern = %#v, want nil so it inherits the notification pattern", cfg.EmailPattern)
+	}
+	if cfg.Events[EventEmail] {
+		t.Fatal("email event is enabled by default")
+	}
+
+	contents, err := os.ReadFile(filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini"))
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	enabled, err := saved.Section(sectionEvents).Key(patternKeyEmail).Bool()
+	if err != nil || enabled {
+		t.Fatalf("saved config does not disable email event: enabled=%t err=%v", enabled, err)
+	}
+}
+
 func TestNewLeavesFavoriteCallPatternUnset(t *testing.T) {
 	configHome := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", configHome)
@@ -128,6 +157,65 @@ func TestSaveRemovesUnsetSMSPattern(t *testing.T) {
 	}
 	if saved.Section(sectionActivePatterns).HasKey(patternKeySMS) {
 		t.Fatalf("saved config retained an unset SMS pattern:\n%s", contents)
+	}
+}
+
+func TestSaveAndLoadEmailSettings(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	pattern := patterns.RapidBlink
+	cfg.EmailPattern = &pattern
+	cfg.Events[EventEmail] = true
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save email settings: %v", err)
+	}
+
+	loaded, err := New()
+	if err != nil {
+		t.Fatalf("load email settings: %v", err)
+	}
+	if loaded.EmailPattern == nil || loaded.EmailPattern.Name != pattern.Name {
+		t.Fatalf("loaded email pattern = %#v, want %q", loaded.EmailPattern, pattern.Name)
+	}
+	if !loaded.Events[EventEmail] {
+		t.Fatal("loaded email event is disabled")
+	}
+}
+
+func TestSaveRemovesUnsetEmailPattern(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	pattern := patterns.RapidBlink
+	cfg.EmailPattern = &pattern
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save email pattern: %v", err)
+	}
+
+	cfg.EmailPattern = nil
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save without email pattern: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini"))
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	if saved.Section(sectionActivePatterns).HasKey(patternKeyEmail) {
+		t.Fatalf("saved config retained an unset email pattern:\n%s", contents)
 	}
 }
 
