@@ -107,7 +107,7 @@ func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testin
 	receiver := &controller{
 		ledController: ledController,
 		config: &config.Config{
-			SMSPattern: sms,
+			SMSPattern: &sms,
 			Events: map[config.EventType]bool{
 				config.EventNotification: false,
 				config.EventSMS:          true,
@@ -125,6 +125,30 @@ func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testin
 	}
 }
 
+func TestUpdateLEDUsesNotificationPatternForSMSWhenSMSPatternIsUnset(t *testing.T) {
+	notification := patterns.SlowBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: notification,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+				config.EventSMS:          true,
+			},
+		},
+		activeNotifications: trackedSMSNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != notification.Name {
+		t.Fatalf("applied pattern = %q, want notification pattern %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
 func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
@@ -132,7 +156,7 @@ func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
-			SMSPattern:          patterns.RapidBlink,
+			SMSPattern:          &patterns.RapidBlink,
 			Events: map[config.EventType]bool{
 				config.EventNotification: true,
 				config.EventSMS:          false,
@@ -157,7 +181,7 @@ func TestUpdateLEDPrioritizesSMSOverGenericNotifications(t *testing.T) {
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: patterns.SlowBlink,
-			SMSPattern:          sms,
+			SMSPattern:          &sms,
 			Events: map[config.EventType]bool{
 				config.EventNotification: true,
 				config.EventSMS:          true,

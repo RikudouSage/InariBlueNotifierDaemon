@@ -76,7 +76,10 @@ func (receiver *controller) updateLED() error {
 		return nil
 
 	case timeInRange && eventEnabled(config.EventSMS) && receiver.hasActiveNotificationFilter(string(config.EventSMS)):
-		pattern := receiver.config.SMSPattern
+		pattern := receiver.config.NotificationPattern
+		if receiver.config.SMSPattern != nil {
+			pattern = *receiver.config.SMSPattern
+		}
 
 		log.Printf(
 			"LED update: requested_pattern=%s reason=active SMS notification notifications=%d",

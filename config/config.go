@@ -53,10 +53,43 @@ type Config struct {
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern patterns.Pattern
 	NotificationPattern patterns.Pattern
-	SMSPattern          patterns.Pattern
+	SMSPattern          *patterns.Pattern
 
 	Events      map[EventType]bool
 	Constraints Constraints
+}
+
+type patternConfig struct {
+	defaultValue *patterns.Pattern
+	get          func() *patterns.Pattern
+	set          func(*patterns.Pattern)
+}
+
+// patternConfigs describes every active pattern. A nil defaultValue makes an
+// override optional: absent configuration remains nil and can inherit another
+// pattern at the point where it is used.
+func (receiver *Config) patternConfigs() map[string]patternConfig {
+	return map[string]patternConfig{
+		patternKeyCall: {
+			defaultValue: new(patterns.DefaultCallPattern),
+			get:          func() *patterns.Pattern { return &receiver.CallPattern },
+			set:          func(pattern *patterns.Pattern) { receiver.CallPattern = *pattern },
+		},
+		patternKeyFavoriteCall: {
+			defaultValue: new(patterns.DefaultCallPattern),
+			get:          func() *patterns.Pattern { return &receiver.FavoriteCallPattern },
+			set:          func(pattern *patterns.Pattern) { receiver.FavoriteCallPattern = *pattern },
+		},
+		patternKeyNotification: {
+			defaultValue: new(patterns.DefaultNotificationPattern),
+			get:          func() *patterns.Pattern { return &receiver.NotificationPattern },
+			set:          func(pattern *patterns.Pattern) { receiver.NotificationPattern = *pattern },
+		},
+		patternKeySMS: {
+			get: func() *patterns.Pattern { return receiver.SMSPattern },
+			set: func(pattern *patterns.Pattern) { receiver.SMSPattern = pattern },
+		},
+	}
 }
 
 func New() (*Config, error) {
@@ -132,29 +165,20 @@ func New() (*Config, error) {
 		return result, nil
 	}
 
-	type patternConfig struct {
-		key        string
-		defaultVal patterns.Pattern
-	}
-
-	configPatterns := map[*patterns.Pattern]patternConfig{
-		&instance.CallPattern:         {key: patternKeyCall, defaultVal: patterns.DefaultCallPattern},
-		&instance.FavoriteCallPattern: {key: patternKeyFavoriteCall, defaultVal: patterns.DefaultCallPattern},
-		&instance.NotificationPattern: {key: patternKeyNotification, defaultVal: patterns.DefaultNotificationPattern},
-		&instance.SMSPattern:          {key: patternKeySMS, defaultVal: patterns.DefaultNotificationPattern},
-	}
-
-	for property, patternData := range configPatterns {
-		if patternRaw := activePatterns.Key(patternData.key).String(); patternRaw != "" {
+	for key, patternData := range instance.patternConfigs() {
+		if patternRaw := activePatterns.Key(key).String(); patternRaw != "" {
 			pattern, err := parsePattern(patternRaw)
 			if err != nil {
-				*property = patternData.defaultVal
+				patternData.set(patternData.defaultValue)
+				if patternData.defaultValue == nil {
+					activePatterns.DeleteKey(key)
+				}
 				changedConfig = true
 			} else {
-				*property = pattern
+				patternData.set(new(pattern))
 			}
-		} else {
-			*property = patternData.defaultVal
+		} else if patternData.defaultValue != nil {
+			patternData.set(patternData.defaultValue)
 			changedConfig = true
 		}
 	}
@@ -220,13 +244,6 @@ func (receiver *Config) Save() error {
 		return errors.New("no config file set, please construct using config.New()")
 	}
 
-	activePatterns := map[string]patterns.Pattern{
-		patternKeyCall:         receiver.CallPattern,
-		patternKeyFavoriteCall: receiver.FavoriteCallPattern,
-		patternKeyNotification: receiver.NotificationPattern,
-		patternKeySMS:          receiver.SMSPattern,
-	}
-
 	if _, err := os.Stat(filepath.Dir(receiver.cfgFilePath)); os.IsNotExist(err) {
 		if err = os.MkdirAll(filepath.Dir(receiver.cfgFilePath), 0700); err != nil {
 			return fmt.Errorf("could not create directory %s: %w", filepath.Dir(receiver.cfgFilePath), err)
@@ -244,7 +261,12 @@ func (receiver *Config) Save() error {
 		return fmt.Errorf("could not load config file: %w", err)
 	}
 
-	for name, pattern := range activePatterns {
+	for name, patternData := range receiver.patternConfigs() {
+		pattern := patternData.get()
+		if pattern == nil {
+			cfgRaw.Section(sectionActivePatterns).DeleteKey(name)
+			continue
+		}
 		if err := pattern.Validate(); err != nil {
 			return fmt.Errorf("the %s pattern is not valid: %w", name, err)
 		}
