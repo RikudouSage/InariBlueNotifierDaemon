@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -30,6 +31,8 @@ type Controller interface {
 type controller struct {
 	connection    *dbus.Conn
 	ledController led.Controller
+
+	now func() time.Time
 
 	config     *config.Config
 	mutex      sync.Mutex
@@ -78,6 +81,7 @@ func NewControllerWithConfig(
 		incomingCalls:            make(map[dbus.ObjectPath]bool),
 		activeNotifications:      make(map[uint32]struct{}),
 		pendingNotificationCalls: make(map[uint32]struct{}),
+		now:                      time.Now,
 	}
 }
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"InariBlueNotifier/dto"
 	"InariBlueNotifier/patterns"
 	"encoding/base64"
 	"encoding/json"
@@ -22,6 +23,10 @@ const (
 	sectionStoredPatterns = "storedPatterns"
 	sectionActivePatterns = "activePatterns"
 	sectionEvents         = "events"
+	sectionConstraints    = "constraints"
+
+	constraintNameStartTime = "startTime"
+	constraintNameEndTime   = "endTime"
 )
 
 type EventType string
@@ -32,6 +37,11 @@ const (
 	EventNotification EventType = patternKeyNotification
 )
 
+type Constraints struct {
+	StartTime dto.TimeOnly
+	EndTime   dto.TimeOnly
+}
+
 type Config struct {
 	cfgFilePath string
 
@@ -41,7 +51,8 @@ type Config struct {
 	FavoriteCallPattern patterns.Pattern
 	NotificationPattern patterns.Pattern
 
-	Events map[EventType]bool
+	Events      map[EventType]bool
+	Constraints Constraints
 }
 
 func New() (*Config, error) {
@@ -173,6 +184,19 @@ func New() (*Config, error) {
 		}
 	}
 
+	constraints := cfgRaw.Section(sectionConstraints)
+	timeConstraintsMap := map[string]*dto.TimeOnly{
+		constraintNameStartTime: &instance.Constraints.StartTime,
+		constraintNameEndTime:   &instance.Constraints.EndTime,
+	}
+	for key, ref := range timeConstraintsMap {
+		if val := constraints.Key(key).String(); val != "" {
+			*ref = dto.NewTimeOnly(val)
+		} else {
+			changedConfig = true
+		}
+	}
+
 	if changedConfig {
 		_ = cfgFile.Close()
 		if err = instance.Save(); err != nil {
@@ -229,6 +253,14 @@ func (receiver *Config) Save() error {
 
 	for name, enabled := range receiver.Events {
 		cfgRaw.Section(sectionEvents).Key(string(name)).SetValue(strconv.FormatBool(enabled))
+	}
+
+	timeConstraints := map[string]dto.TimeOnly{
+		constraintNameStartTime: receiver.Constraints.StartTime,
+		constraintNameEndTime:   receiver.Constraints.EndTime,
+	}
+	for key, value := range timeConstraints {
+		cfgRaw.Section(sectionConstraints).Key(key).SetValue(value.String())
 	}
 
 	_ = cfgFile.Close()
