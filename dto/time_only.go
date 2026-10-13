@@ -44,7 +44,6 @@ func NewTimeOnly[TType string | int | uint | TimeOnly | time.Time](input TType) 
 			}
 			if len(part) == 2 && part[0] == '0' {
 				part = part[1:]
-				parts[i] = part[1:]
 			}
 
 			var err error
