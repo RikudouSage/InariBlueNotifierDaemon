@@ -11,5 +11,5 @@ func (*signalFilter) Matches(notification Notification) bool {
 		notification,
 		"org.thoughtcrime.securesms",
 		"im.molly.app",
-	)
+	) || isNemoOwner(notification, "harbour-whisperfish")
 }
