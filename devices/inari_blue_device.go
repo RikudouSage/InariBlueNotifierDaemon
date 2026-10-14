@@ -17,7 +17,6 @@ import (
 
 const (
 	inariBlueI2CDeviceAddress = 0x45
-	inariBlueRequiredChannel  = 0
 
 	inariBlueRegisterGlobalControl     byte = 0x01
 	inariBlueRegisterChannelEnable     byte = 0x30
@@ -28,7 +27,8 @@ const (
 	inariBlueControllerEnabled  byte = 0x01
 	inariBlueControllerDisabled byte = 0x00
 
-	inariBlueChannelPatternMode byte = 0x9f
+	// Hardware pattern mode, independent channels (SYNC=0, MD=1, CUR=15).
+	inariBlueChannelPatternMode byte = 0x1f
 
 	inariBlueAllChannelsDisabled byte = 0x00
 
@@ -45,7 +45,7 @@ type inariBlueChannel struct {
 	enableBit          byte
 }
 
-var inariBlueAllChannels = []uint8{inariBlueRequiredChannel, 1, 2}
+var inariBlueAllChannels = []uint8{0, 1, 2}
 
 var inariBlueChannels = map[uint8]inariBlueChannel{
 	0: {
@@ -180,8 +180,7 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 		channels = inariBlueAllChannels
 	}
 
-	// The Inari Blue LED assembly requires channel 0 as its shared path.
-	enabledChannels := inariBlueChannels[inariBlueRequiredChannel].enableBit
+	enabledChannels := byte(0)
 	for _, channelIndex := range channels {
 		channel, ok := inariBlueChannels[channelIndex]
 		if !ok {
