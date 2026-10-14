@@ -13,6 +13,9 @@ func NewMatcher(filters ...Filter) *Matcher {
 func DefaultMatcher(config *config.Config) *Matcher {
 	filters := make([]Filter, 0, len(config.NotificationFilters)+4)
 	for _, filter := range config.NotificationFilters {
+		if !filter.Enabled {
+			continue
+		}
 		filters = append(filters, newCustomFilter(filter))
 	}
 	filters = append(
