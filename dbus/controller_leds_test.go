@@ -123,6 +123,31 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 	}
 }
 
+func TestUpdateLEDAppliesNotificationPatternForCustomMatch(t *testing.T) {
+	notification := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: notification,
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+			},
+		},
+		activeNotifications: map[uint32]trackedNotification{
+			1: {customMatched: true},
+		},
+		now: time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != notification.Name {
+		t.Fatalf("applied pattern = %q, want %q", ledController.lastPattern.Name, notification.Name)
+	}
+}
+
 func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testing.T) {
 	sms := patterns.RapidBlink
 	ledController := &recordingLEDController{}

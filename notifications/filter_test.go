@@ -63,6 +63,26 @@ func TestCustomFilterMatchesConfiguredAndroidPackagesAndNemoOwners(t *testing.T)
 	}
 }
 
+func TestMatcherReportsEnabledCustomMatch(t *testing.T) {
+	matcher := DefaultMatcher(&config.Config{NotificationFilters: map[string]dto.CustomAppFilter{
+		"example": {
+			FilterName: "example",
+			NemoOwners: []string{"native-example"},
+			Enabled:    true,
+		},
+		"disabled": {
+			FilterName: "disabled",
+			NemoOwners: []string{"native-example"},
+		},
+	}})
+
+	if !matcher.MatchesCustom(Notification{Hints: map[string]dbus.Variant{
+		nemoOwnerHint: dbus.MakeVariant("native-example"),
+	}}) {
+		t.Fatal("enabled custom filter did not match")
+	}
+}
+
 func TestIsNemoOwner(t *testing.T) {
 	notification := Notification{Hints: map[string]dbus.Variant{
 		nemoOwnerHint: dbus.MakeVariant("example-owner"),
