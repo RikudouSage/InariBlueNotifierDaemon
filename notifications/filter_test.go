@@ -1,10 +1,67 @@
 package notifications
 
 import (
+	"InariBlueNotifier/config"
+	"InariBlueNotifier/dto"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
 )
+
+func TestCustomFilterName(t *testing.T) {
+	filter := newCustomFilter(dto.CustomAppFilter{FilterName: "custom-app"})
+
+	if got := filter.Name(); got != "custom-app" {
+		t.Errorf("Name() = %q, want %q", got, "custom-app")
+	}
+}
+
+func TestCustomFilterMatchesConfiguredAndroidPackagesAndNemoOwners(t *testing.T) {
+	filter := newCustomFilter(dto.CustomAppFilter{
+		AndroidPackageNames: []string{"org.example.app"},
+		NemoOwners:          []string{"native-example"},
+	})
+
+	tests := map[string]struct {
+		hints map[string]dbus.Variant
+		want  bool
+	}{
+		"configured Android package": {
+			hints: map[string]dbus.Variant{
+				nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+				nemoOriginPackageHint: dbus.MakeVariant("org.example.app"),
+			},
+			want: true,
+		},
+		"configured Nemo owner": {
+			hints: map[string]dbus.Variant{
+				nemoOwnerHint: dbus.MakeVariant("native-example"),
+			},
+			want: true,
+		},
+		"Android package without APKD bridge": {
+			hints: map[string]dbus.Variant{
+				nemoOriginPackageHint: dbus.MakeVariant("org.example.app"),
+			},
+			want: false,
+		},
+		"unconfigured Android package and owner": {
+			hints: map[string]dbus.Variant{
+				nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
+				nemoOriginPackageHint: dbus.MakeVariant("org.example.other"),
+			},
+			want: false,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := filter.Matches(Notification{Hints: test.hints}); got != test.want {
+				t.Errorf("Matches() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
 
 func TestIsNemoOwner(t *testing.T) {
 	notification := Notification{Hints: map[string]dbus.Variant{
@@ -75,7 +132,7 @@ func TestEmailDoesNotMatchPartialFeedbackToken(t *testing.T) {
 }
 
 func TestDefaultMatcherIncludesEmailFilter(t *testing.T) {
-	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+	matches := DefaultMatcher(&config.Config{}).Match(Notification{Hints: map[string]dbus.Variant{
 		"x-nemo-feedback": dbus.MakeVariant("email_exists"),
 	}})
 
@@ -120,7 +177,7 @@ func TestSignalRequiresAPKDBridgeAndKnownPackage(t *testing.T) {
 }
 
 func TestDefaultMatcherIncludesSignalFilter(t *testing.T) {
-	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+	matches := DefaultMatcher(&config.Config{}).Match(Notification{Hints: map[string]dbus.Variant{
 		nemoOwnerHint:         dbus.MakeVariant(apkdBridgeOwner),
 		nemoOriginPackageHint: dbus.MakeVariant("im.molly.app"),
 	}})
@@ -168,7 +225,7 @@ func TestMatrixRequiresKnownNativeOwnerOrAPKDPackage(t *testing.T) {
 }
 
 func TestDefaultMatcherIncludesMatrixFilter(t *testing.T) {
-	matches := DefaultMatcher().Match(Notification{Hints: map[string]dbus.Variant{
+	matches := DefaultMatcher(&config.Config{}).Match(Notification{Hints: map[string]dbus.Variant{
 		nemoOwnerHint: dbus.MakeVariant("xmatic"),
 	}})
 
