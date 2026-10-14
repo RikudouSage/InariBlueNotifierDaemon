@@ -39,3 +39,17 @@ func (receiver *Matcher) Match(notification Notification) map[string]struct{} {
 
 	return matched
 }
+
+// MatchesCustom reports whether an enabled custom filter matches the
+// notification. It is separate from Match so callers can distinguish custom
+// filters from the built-in, event-specific filters.
+func (receiver *Matcher) MatchesCustom(notification Notification) bool {
+	for _, filter := range receiver.filters {
+		custom, ok := filter.(*customFilter)
+		if ok && custom.Matches(notification) {
+			return true
+		}
+	}
+
+	return false
+}

@@ -154,6 +154,23 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
+	// TODO: Move this above built-in matchers once custom matchers support a configured pattern.
+	case timeInRange && receiver.hasActiveCustomNotification():
+		pattern := receiver.config.NotificationPattern
+
+		log.Printf(
+			"LED update: requested_pattern=%s reason=active custom-matched notification notifications=%d",
+			pattern.Name,
+			len(receiver.activeNotifications),
+		)
+
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
+		}
+
+		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		return nil
+
 	case timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
 		pattern := receiver.config.NotificationPattern
 
@@ -189,6 +206,16 @@ func (receiver *controller) updateLED() error {
 func (receiver *controller) hasActiveNotificationFilter(filter string) bool {
 	for _, notification := range receiver.activeNotifications {
 		if _, matches := notification.filters[filter]; matches {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (receiver *controller) hasActiveCustomNotification() bool {
+	for _, notification := range receiver.activeNotifications {
+		if notification.customMatched {
 			return true
 		}
 	}
