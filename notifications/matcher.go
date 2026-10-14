@@ -1,5 +1,7 @@
 package notifications
 
+import "InariBlueNotifier/config"
+
 type Matcher struct {
 	filters []Filter
 }
@@ -8,13 +10,20 @@ func NewMatcher(filters ...Filter) *Matcher {
 	return &Matcher{filters: filters}
 }
 
-func DefaultMatcher() *Matcher {
-	return NewMatcher(
+func DefaultMatcher(config *config.Config) *Matcher {
+	filters := make([]Filter, 0, len(config.NotificationFilters)+4)
+	for _, filter := range config.NotificationFilters {
+		filters = append(filters, newCustomFilter(filter))
+	}
+	filters = append(
+		filters,
 		&smsFilter{},
 		&emailFilter{},
 		&signalFilter{},
 		&matrixFilter{},
 	)
+
+	return NewMatcher(filters...)
 }
 
 func (receiver *Matcher) Match(notification Notification) map[string]struct{} {

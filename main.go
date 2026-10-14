@@ -25,7 +25,7 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 		return nil, fmt.Errorf("register external controller: %w", err)
 	}
 
-	notificationMatcher := notifications.DefaultMatcher()
+	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
 	if err := mainController.Start(); err != nil {
 		cleanupErr := externalController.Unregister(sessionBus)

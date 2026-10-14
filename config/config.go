@@ -25,10 +25,11 @@ const (
 	patternKeySignal       = "signal"
 	patternKeyMatrix       = "matrix"
 
-	sectionStoredPatterns = "storedPatterns"
-	sectionActivePatterns = "activePatterns"
-	sectionEvents         = "events"
-	sectionConstraints    = "constraints"
+	sectionStoredPatterns      = "storedPatterns"
+	sectionActivePatterns      = "activePatterns"
+	sectionEvents              = "events"
+	sectionConstraints         = "constraints"
+	sectionNotificationFilters = "notificationFilters"
 
 	constraintNameStartTime = "startTime"
 	constraintNameEndTime   = "endTime"
@@ -54,7 +55,8 @@ type Constraints struct {
 type Config struct {
 	cfgFilePath string
 
-	StoredPatterns map[string]patterns.Pattern
+	StoredPatterns      map[string]patterns.Pattern
+	NotificationFilters map[string]dto.CustomAppFilter
 
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern *patterns.Pattern
@@ -132,9 +134,10 @@ func New() (*Config, error) {
 	}
 
 	instance := &Config{
-		cfgFilePath:    cfgFilePath,
-		StoredPatterns: make(map[string]patterns.Pattern),
-		Events:         make(map[EventType]bool, 4),
+		cfgFilePath:         cfgFilePath,
+		StoredPatterns:      make(map[string]patterns.Pattern),
+		Events:              make(map[EventType]bool, 7),
+		NotificationFilters: make(map[string]dto.CustomAppFilter),
 	}
 
 	changedConfig := false
@@ -216,6 +219,22 @@ func New() (*Config, error) {
 		}
 
 		instance.StoredPatterns[pattern.Name] = pattern
+	}
+
+	customNotificationFilters := cfgRaw.Section(sectionNotificationFilters)
+	for _, key := range customNotificationFilters.Keys() {
+		raw := key.String()
+		decoded, err := base64.RawStdEncoding.DecodeString(raw)
+		if err != nil {
+			continue
+		}
+
+		var filter dto.CustomAppFilter
+		if err := json.Unmarshal(decoded, &filter); err != nil {
+			continue
+		}
+
+		instance.NotificationFilters[key.Name()] = filter
 	}
 
 	events := cfgRaw.Section(sectionEvents)
@@ -307,6 +326,11 @@ func (receiver *Config) Save() error {
 
 	for name, enabled := range receiver.Events {
 		cfgRaw.Section(sectionEvents).Key(string(name)).SetValue(strconv.FormatBool(enabled))
+	}
+
+	for name, filter := range receiver.NotificationFilters {
+		filterJson := lo.Must(json.Marshal(filter))
+		cfgRaw.Section(sectionNotificationFilters).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(filterJson))
 	}
 
 	timeConstraints := map[string]dto.TimeOnly{
