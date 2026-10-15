@@ -60,11 +60,8 @@ type Config struct {
 
 	MigratedVersion uint
 
-	StoredPatterns      map[string]patterns.Pattern
-	NotificationFilters map[string]dto.CustomAppFilter
-	// CustomActivePatterns assigns an override pattern to a custom notification
-	// filter. Keys are CustomAppFilter.FilterName values; an absent pattern
-	// inherits NotificationPattern.
+	StoredPatterns       map[string]patterns.Pattern
+	NotificationFilters  map[string]dto.CustomAppFilter
 	CustomActivePatterns map[string]patterns.Pattern
 
 	CallPattern         patterns.Pattern
