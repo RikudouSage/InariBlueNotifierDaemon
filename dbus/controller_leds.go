@@ -2,7 +2,9 @@ package dbus
 
 import (
 	"InariBlueNotifier/config"
+	"InariBlueNotifier/patterns"
 	"log"
+	"sort"
 	"time"
 
 	"github.com/godbus/dbus/v5"
@@ -42,6 +44,9 @@ func (receiver *controller) updateLED() error {
 		return success
 	}(receiver.now())
 
+	customPattern, hasCustomPattern := receiver.activeCustomPattern()
+	hasCustomNotification := receiver.hasActiveCustomNotification()
+
 	switch {
 	case timeInRange && eventEnabled(config.EventFavoriteCall) && hasFavoriteCall(receiver.incomingCalls):
 		pattern := receiver.config.CallPattern
@@ -76,6 +81,20 @@ func (receiver *controller) updateLED() error {
 		}
 
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		return nil
+
+	case timeInRange && hasCustomPattern:
+		log.Printf(
+			"LED update: requested_pattern=%s reason=active custom notification filter notifications=%d",
+			customPattern.Name,
+			len(receiver.activeNotifications),
+		)
+
+		if err := receiver.ledController.PlayPattern(customPattern); err != nil {
+			return err
+		}
+
+		log.Printf("LED update applied: pattern=%s", customPattern.Name)
 		return nil
 
 	case timeInRange && eventEnabled(config.EventSMS) && receiver.hasActiveNotificationFilter(string(config.EventSMS)):
@@ -154,29 +173,19 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
-	// TODO: Move this above built-in matchers once custom matchers support a configured pattern.
-	case timeInRange && receiver.hasActiveCustomNotification():
+	case timeInRange && hasCustomNotification,
+		timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
+
 		pattern := receiver.config.NotificationPattern
-
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active custom-matched notification notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
-
-		if err := receiver.ledController.PlayPattern(pattern); err != nil {
-			return err
+		reason := "active notifications"
+		if hasCustomNotification {
+			reason = "active custom-matched notification"
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
-		return nil
-
-	case timeInRange && eventEnabled(config.EventNotification) && len(receiver.activeNotifications) > 0:
-		pattern := receiver.config.NotificationPattern
-
 		log.Printf(
-			"LED update: requested_pattern=%s reason=active notifications notifications=%d",
+			"LED update: requested_pattern=%s reason=%s notifications=%d",
 			pattern.Name,
+			reason,
 			len(receiver.activeNotifications),
 		)
 
@@ -221,6 +230,31 @@ func (receiver *controller) hasActiveCustomNotification() bool {
 	}
 
 	return false
+}
+
+// activeCustomPattern returns the pattern configured for an active custom
+// filter. When more than one custom filter is active, names are sorted so the
+// selected pattern is stable instead of depending on Go map iteration order.
+func (receiver *controller) activeCustomPattern() (pattern patterns.Pattern, ok bool) {
+	if receiver.config == nil || len(receiver.config.CustomActivePatterns) == 0 {
+		return patterns.Pattern{}, false
+	}
+
+	filterNames := make([]string, 0)
+	for _, notification := range receiver.activeNotifications {
+		for filterName := range notification.customFilters {
+			if _, configured := receiver.config.CustomActivePatterns[filterName]; configured {
+				filterNames = append(filterNames, filterName)
+			}
+		}
+	}
+
+	if len(filterNames) == 0 {
+		return patterns.Pattern{}, false
+	}
+
+	sort.Strings(filterNames)
+	return receiver.config.CustomActivePatterns[filterNames[0]], true
 }
 
 func hasFavoriteCall(calls map[dbus.ObjectPath]bool) bool {

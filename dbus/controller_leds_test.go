@@ -148,6 +148,66 @@ func TestUpdateLEDAppliesNotificationPatternForCustomMatch(t *testing.T) {
 	}
 }
 
+func TestUpdateLEDAppliesConfiguredCustomPattern(t *testing.T) {
+	custom := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: patterns.SlowBlink,
+			CustomActivePatterns: map[string]patterns.Pattern{
+				"example-app": custom,
+			},
+			Events: map[config.EventType]bool{
+				config.EventNotification: false,
+			},
+		},
+		activeNotifications: map[uint32]trackedNotification{
+			1: {customFilters: map[string]struct{}{"example-app": {}}},
+		},
+		now: time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != custom.Name {
+		t.Fatalf("applied pattern = %q, want configured custom pattern %q", ledController.lastPattern.Name, custom.Name)
+	}
+}
+
+func TestUpdateLEDUsesCustomPatternBeforeBuiltInNotificationPattern(t *testing.T) {
+	custom := patterns.RapidBlink
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			NotificationPattern: patterns.SlowBlink,
+			SMSPattern:          &patterns.GentleGlow,
+			CustomActivePatterns: map[string]patterns.Pattern{
+				"example-app": custom,
+			},
+			Events: map[config.EventType]bool{
+				config.EventSMS: true,
+			},
+		},
+		activeNotifications: map[uint32]trackedNotification{
+			1: {
+				filters:       map[string]struct{}{string(config.EventSMS): {}},
+				customFilters: map[string]struct{}{"example-app": {}},
+			},
+		},
+		now: time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if ledController.lastPattern.Name != custom.Name {
+		t.Fatalf("applied pattern = %q, want custom pattern %q", ledController.lastPattern.Name, custom.Name)
+	}
+}
+
 func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testing.T) {
 	sms := patterns.RapidBlink
 	ledController := &recordingLEDController{}

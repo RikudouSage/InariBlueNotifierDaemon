@@ -12,6 +12,7 @@ import (
 
 type trackedNotification struct {
 	filters       map[string]struct{}
+	customFilters map[string]struct{}
 	customMatched bool
 }
 
@@ -105,9 +106,11 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 			return false
 		}
 
+		customFilters := receiver.notificationMatcher.MatchCustom(notification)
 		receiver.pendingNotificationCalls[message.Serial()] = trackedNotification{
 			filters:       receiver.notificationMatcher.Match(notification),
-			customMatched: receiver.notificationMatcher.MatchesCustom(notification),
+			customFilters: customFilters,
+			customMatched: len(customFilters) > 0,
 		}
 		log.Printf("notification notify: serial=%d pending=%d", message.Serial(), len(receiver.pendingNotificationCalls))
 

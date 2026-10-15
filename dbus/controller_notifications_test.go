@@ -2,6 +2,7 @@ package dbus
 
 import (
 	"InariBlueNotifier/config"
+	"InariBlueNotifier/dto"
 	"InariBlueNotifier/notifications"
 	"testing"
 
@@ -53,6 +54,43 @@ func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
 	}
 	if len(receiver.activeNotifications) != 0 {
 		t.Fatalf("active notifications = %v, want none", receiver.activeNotifications)
+	}
+}
+
+func TestCustomNotificationTracksMatchingFilterName(t *testing.T) {
+	configuration := &config.Config{NotificationFilters: map[string]dto.CustomAppFilter{
+		"example": {
+			FilterName: "example",
+			NemoOwners: []string{"native-example"},
+			Enabled:    true,
+		},
+	}}
+	receiver := &controller{
+		notificationMatcher:      notifications.DefaultMatcher(configuration),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
+	}
+
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		Body: validNotifyBody(map[string]dbus.Variant{
+			"x-nemo-owner": dbus.MakeVariant("native-example"),
+		}),
+	})
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodReply,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+		Body: []any{uint32(42)},
+	})
+
+	if _, matched := receiver.activeNotifications[42].customFilters["example"]; !matched {
+		t.Fatal("active notification did not retain the matching custom filter name")
 	}
 }
 

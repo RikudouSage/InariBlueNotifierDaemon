@@ -1,6 +1,7 @@
 package config
 
 import (
+	"InariBlueNotifier/dto"
 	"InariBlueNotifier/patterns"
 	"os"
 	"path/filepath"
@@ -128,6 +129,46 @@ func TestNewLeavesFavoriteCallPatternUnset(t *testing.T) {
 	}
 	if cfg.FavoriteCallPattern != nil {
 		t.Fatalf("favorite call pattern = %#v, want nil so it inherits the call pattern", cfg.FavoriteCallPattern)
+	}
+}
+
+func TestSaveAndLoadCustomPattern(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+
+	cfg, err := New()
+	if err != nil {
+		t.Fatalf("create config: %v", err)
+	}
+	cfg.NotificationFilters["example-filter"] = dto.CustomAppFilter{
+		FilterName: "example-app",
+		NemoOwners: []string{"native-example"},
+		Enabled:    true,
+	}
+	cfg.CustomActivePatterns["example-app"] = patterns.RapidBlink
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save custom pattern: %v", err)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini"))
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	saved, err := ini.Load(contents)
+	if err != nil {
+		t.Fatalf("parse saved config: %v", err)
+	}
+	if !saved.Section(sectionActivePatterns).HasKey("example-app") {
+		t.Fatal("custom pattern was not saved in activePatterns")
+	}
+
+	loaded, err := New()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	pattern, ok := loaded.CustomActivePatterns["example-app"]
+	if !ok || pattern.Name != patterns.RapidBlink.Name {
+		t.Fatalf("custom pattern = %#v, want %q", pattern, patterns.RapidBlink.Name)
 	}
 }
 

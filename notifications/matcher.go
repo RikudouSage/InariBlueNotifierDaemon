@@ -44,12 +44,19 @@ func (receiver *Matcher) Match(notification Notification) map[string]struct{} {
 // notification. It is separate from Match so callers can distinguish custom
 // filters from the built-in, event-specific filters.
 func (receiver *Matcher) MatchesCustom(notification Notification) bool {
+	return len(receiver.MatchCustom(notification)) > 0
+}
+
+// MatchCustom returns the names of enabled custom filters that match the
+// notification. Callers use those names to look up their configured patterns.
+func (receiver *Matcher) MatchCustom(notification Notification) map[string]struct{} {
+	matched := make(map[string]struct{})
 	for _, filter := range receiver.filters {
 		custom, ok := filter.(*customFilter)
 		if ok && custom.Matches(notification) {
-			return true
+			matched[custom.Name()] = struct{}{}
 		}
 	}
 
-	return false
+	return matched
 }
