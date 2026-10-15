@@ -24,6 +24,7 @@ const (
 	patternKeyEmail        = "email"
 	patternKeySignal       = "signal"
 	patternKeyMatrix       = "matrix"
+	patternKeyOff          = "off"
 
 	sectionStoredPatterns      = "storedPatterns"
 	sectionActivePatterns      = "activePatterns"
@@ -71,6 +72,7 @@ type Config struct {
 	EmailPattern        *patterns.Pattern
 	SignalPattern       *patterns.Pattern
 	MatrixPattern       *patterns.Pattern
+	OffPattern          patterns.Pattern
 
 	Events      map[EventType]bool
 	Constraints Constraints
@@ -117,6 +119,11 @@ func (receiver *Config) patternConfigs() map[string]patternConfig {
 			get: func() *patterns.Pattern { return receiver.MatrixPattern },
 			set: func(pattern *patterns.Pattern) { receiver.MatrixPattern = pattern },
 		},
+		patternKeyOff: {
+			defaultValue: new(patterns.Off),
+			get:          func() *patterns.Pattern { return &receiver.OffPattern },
+			set:          func(pattern *patterns.Pattern) { receiver.OffPattern = *pattern },
+		},
 	}
 }
 
@@ -142,7 +149,7 @@ func New() (*Config, error) {
 	instance := &Config{
 		cfgFilePath:          cfgFilePath,
 		StoredPatterns:       make(map[string]patterns.Pattern),
-		Events:               make(map[EventType]bool, 7),
+		Events:               make(map[EventType]bool, 8),
 		NotificationFilters:  make(map[string]dto.CustomAppFilter),
 		CustomActivePatterns: make(map[string]patterns.Pattern),
 	}

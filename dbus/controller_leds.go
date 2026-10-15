@@ -12,11 +12,6 @@ import (
 
 func (receiver *controller) updateLED() error {
 	eventEnabled := func(event config.EventType) bool {
-		// Missing event settings use the same defaults as a newly created config.
-		if receiver.config == nil || receiver.config.Events == nil {
-			return event == config.EventCall || event == config.EventFavoriteCall
-		}
-
 		enabled, configured := receiver.config.Events[event]
 		if !configured {
 			return event == config.EventCall || event == config.EventFavoriteCall
@@ -196,13 +191,22 @@ func (receiver *controller) updateLED() error {
 		log.Printf("LED update applied: pattern=%s", pattern.Name)
 		return nil
 
-	default:
-		reason := "no incoming calls or active notifications"
-		if !timeInRange {
-			reason = "outside of allowed hours"
+	case timeInRange:
+		pattern := receiver.config.OffPattern
+
+		log.Printf(
+			"LED update: requested_pattern=%s reason=no incoming calls or active notifications notifications=%d",
+			pattern.Name,
+			len(receiver.activeNotifications),
+		)
+
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
 		}
 
-		log.Printf("LED update: requested_stop reason=%s", reason)
+		return nil
+	default:
+		log.Printf("LED update: requested_stop reason=outside of allowed hours")
 		if err := receiver.ledController.Stop(); err != nil {
 			return err
 		}
