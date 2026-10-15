@@ -164,6 +164,10 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 		return err
 	}
 
+	if pattern.Brightness == 0 {
+		return receiver.disable()
+	}
+
 	rise, hold := encodeDuration(pattern.Rise), encodeDuration(pattern.Hold)
 	decay, off, delay := encodeDuration(pattern.Decay), encodeDuration(pattern.Off), encodeDuration(pattern.Delay)
 

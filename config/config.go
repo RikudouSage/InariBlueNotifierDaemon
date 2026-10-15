@@ -30,9 +30,12 @@ const (
 	sectionEvents              = "events"
 	sectionConstraints         = "constraints"
 	sectionNotificationFilters = "notificationFilters"
+	sectionInternal            = "internal"
 
 	constraintNameStartTime = "startTime"
 	constraintNameEndTime   = "endTime"
+
+	internalKeyMigratedVersion = "migratedVersion"
 )
 
 type EventType string
@@ -54,6 +57,8 @@ type Constraints struct {
 
 type Config struct {
 	cfgFilePath string
+
+	MigratedVersion uint
 
 	StoredPatterns      map[string]patterns.Pattern
 	NotificationFilters map[string]dto.CustomAppFilter
@@ -158,6 +163,7 @@ func New() (*Config, error) {
 			patterns.QuickFlash,
 			patterns.GentleGlow,
 			patterns.DelayedBeacon,
+			patterns.Off,
 		}
 
 		instance.StoredPatterns = lo.KeyBy(initialPatterns, func(item patterns.Pattern) string {
@@ -169,7 +175,15 @@ func New() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not load config file: %w", err)
 	}
-	activePatterns := cfgRaw.Section(sectionActivePatterns)
+
+	internal := cfgRaw.Section(sectionInternal)
+	migratedVersion, err := internal.Key(internalKeyMigratedVersion).Uint()
+	if err != nil {
+		instance.MigratedVersion = 0
+		changedConfig = true
+	} else {
+		instance.MigratedVersion = migratedVersion
+	}
 
 	parsePattern := func(raw string) (patterns.Pattern, error) {
 		decoded, err := base64.RawStdEncoding.DecodeString(raw)
@@ -188,6 +202,7 @@ func New() (*Config, error) {
 		return result, nil
 	}
 
+	activePatterns := cfgRaw.Section(sectionActivePatterns)
 	for key, patternData := range instance.patternConfigs() {
 		if patternRaw := activePatterns.Key(key).String(); patternRaw != "" {
 			pattern, err := parsePattern(patternRaw)
@@ -340,6 +355,8 @@ func (receiver *Config) Save() error {
 	for key, value := range timeConstraints {
 		cfgRaw.Section(sectionConstraints).Key(key).SetValue(value.String())
 	}
+
+	cfgRaw.Section(sectionInternal).Key(internalKeyMigratedVersion).SetValue(strconv.FormatInt(int64(receiver.MigratedVersion), 10))
 
 	_ = cfgFile.Close()
 	if err = cfgRaw.SaveTo(receiver.cfgFilePath); err != nil {

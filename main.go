@@ -6,6 +6,7 @@ import (
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/devices"
 	"InariBlueNotifier/led"
+	"InariBlueNotifier/migrations"
 	"InariBlueNotifier/notifications"
 	"context"
 	"errors"
@@ -55,6 +56,11 @@ func main() {
 	cfg, err := config.New()
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to load configuration: %w", err))
+	}
+
+	migrator := migrations.GetMigrator()
+	if err = migrator.Migrate(cfg); err != nil {
+		log.Fatal(fmt.Errorf("failed to migrate: %w", err))
 	}
 
 	sessionBus, err := dbus.ConnectSessionBus()
