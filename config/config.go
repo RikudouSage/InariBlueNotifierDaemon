@@ -60,8 +60,9 @@ type Config struct {
 
 	MigratedVersion uint
 
-	StoredPatterns      map[string]patterns.Pattern
-	NotificationFilters map[string]dto.CustomAppFilter
+	StoredPatterns       map[string]patterns.Pattern
+	NotificationFilters  map[string]dto.CustomAppFilter
+	CustomActivePatterns map[string]patterns.Pattern
 
 	CallPattern         patterns.Pattern
 	FavoriteCallPattern *patterns.Pattern
@@ -139,10 +140,11 @@ func New() (*Config, error) {
 	}
 
 	instance := &Config{
-		cfgFilePath:         cfgFilePath,
-		StoredPatterns:      make(map[string]patterns.Pattern),
-		Events:              make(map[EventType]bool, 7),
-		NotificationFilters: make(map[string]dto.CustomAppFilter),
+		cfgFilePath:          cfgFilePath,
+		StoredPatterns:       make(map[string]patterns.Pattern),
+		Events:               make(map[EventType]bool, 7),
+		NotificationFilters:  make(map[string]dto.CustomAppFilter),
+		CustomActivePatterns: make(map[string]patterns.Pattern),
 	}
 
 	changedConfig := false
@@ -252,6 +254,27 @@ func New() (*Config, error) {
 		instance.NotificationFilters[key.Name()] = filter
 	}
 
+	for filterKey, filter := range instance.NotificationFilters {
+		filterName := filter.FilterName
+		if filterName == "" {
+			filterName = filterKey
+		}
+
+		patternRaw := activePatterns.Key(filterName).String()
+		if patternRaw == "" {
+			continue
+		}
+
+		pattern, err := parsePattern(patternRaw)
+		if err != nil {
+			activePatterns.DeleteKey(filterName)
+			changedConfig = true
+			continue
+		}
+
+		instance.CustomActivePatterns[filterName] = pattern
+	}
+
 	events := cfgRaw.Section(sectionEvents)
 	for _, key := range events.Keys() {
 		instance.Events[EventType(key.Name())], err = key.Bool()
@@ -346,6 +369,23 @@ func (receiver *Config) Save() error {
 	for name, filter := range receiver.NotificationFilters {
 		filterJson := lo.Must(json.Marshal(filter))
 		cfgRaw.Section(sectionNotificationFilters).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(filterJson))
+	}
+
+	for filterKey, filter := range receiver.NotificationFilters {
+		filterName := filter.FilterName
+		if filterName == "" {
+			filterName = filterKey
+		}
+		if _, configured := receiver.CustomActivePatterns[filterName]; !configured {
+			cfgRaw.Section(sectionActivePatterns).DeleteKey(filterName)
+		}
+	}
+	for name, pattern := range receiver.CustomActivePatterns {
+		if err := pattern.Validate(); err != nil {
+			return fmt.Errorf("the custom pattern for filter %q is not valid: %w", name, err)
+		}
+		patternJSON := lo.Must(json.Marshal(pattern))
+		cfgRaw.Section(sectionActivePatterns).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJSON))
 	}
 
 	timeConstraints := map[string]dto.TimeOnly{
