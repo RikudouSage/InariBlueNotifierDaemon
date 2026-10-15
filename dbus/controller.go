@@ -62,6 +62,8 @@ func NewControllerWithConfig(
 		configuration = &config.Config{
 			CallPattern:         patterns.DefaultCallPattern,
 			NotificationPattern: patterns.DefaultNotificationPattern,
+			OffPattern:          patterns.Off,
+			Events:              make(map[config.EventType]bool),
 		}
 	}
 

@@ -426,11 +426,11 @@ func TestUpdateLEDPrioritizesSMSOverGenericNotifications(t *testing.T) {
 	}
 }
 
-func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
+func TestUpdateLEDAppliesOffPatternWhenNotificationEventIsMissing(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
 		ledController:       ledController,
-		config:              &config.Config{NotificationPattern: patterns.RapidBlink},
+		config:              &config.Config{NotificationPattern: patterns.RapidBlink, OffPattern: patterns.Off},
 		activeNotifications: trackedNotifications(1),
 		now:                 time.Now,
 	}
@@ -438,8 +438,8 @@ func TestUpdateLEDSkipsNotificationWhenEventIsMissing(t *testing.T) {
 	if err := receiver.updateLED(); err != nil {
 		t.Fatalf("update LED: %v", err)
 	}
-	if !ledController.stopped {
-		t.Fatal("LED controller was not stopped")
+	if ledController.lastPattern.Name != patterns.Off.Name {
+		t.Fatalf("applied pattern = %q, want off pattern %q", ledController.lastPattern.Name, patterns.Off.Name)
 	}
 }
 
@@ -519,15 +519,18 @@ func TestUpdateLEDSkipsDisabledFavouritePattern(t *testing.T) {
 	}
 }
 
-func TestUpdateLEDStopsWhenAllActiveEventsAreDisabled(t *testing.T) {
+func TestUpdateLEDAppliesOffPatternWhenAllActiveEventsAreDisabled(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
 		ledController: ledController,
-		config: &config.Config{Events: map[config.EventType]bool{
-			config.EventCall:         false,
-			config.EventFavoriteCall: false,
-			config.EventNotification: false,
-		}},
+		config: &config.Config{
+			OffPattern: patterns.Off,
+			Events: map[config.EventType]bool{
+				config.EventCall:         false,
+				config.EventFavoriteCall: false,
+				config.EventNotification: false,
+			},
+		},
 		incomingCalls:       map[dbus.ObjectPath]bool{"/calls/one": false},
 		activeNotifications: trackedNotifications(1),
 		now:                 time.Now,
@@ -536,20 +539,24 @@ func TestUpdateLEDStopsWhenAllActiveEventsAreDisabled(t *testing.T) {
 	if err := receiver.updateLED(); err != nil {
 		t.Fatalf("update LED: %v", err)
 	}
-	if !ledController.stopped {
-		t.Fatal("LED controller was not stopped")
+	if ledController.lastPattern.Name != patterns.Off.Name {
+		t.Fatalf("applied pattern = %q, want off pattern %q", ledController.lastPattern.Name, patterns.Off.Name)
 	}
 }
 
-func TestUpdateLEDStopsWhenThereAreNoEvents(t *testing.T) {
+func TestUpdateLEDAppliesOffPatternWhenThereAreNoEvents(t *testing.T) {
 	ledController := &recordingLEDController{}
-	receiver := &controller{ledController: ledController, now: time.Now}
+	receiver := &controller{
+		ledController: ledController,
+		config:        &config.Config{OffPattern: patterns.Off},
+		now:           time.Now,
+	}
 
 	if err := receiver.updateLED(); err != nil {
 		t.Fatalf("update LED: %v", err)
 	}
-	if !ledController.stopped {
-		t.Fatal("LED controller was not stopped")
+	if ledController.lastPattern.Name != patterns.Off.Name {
+		t.Fatalf("applied pattern = %q, want off pattern %q", ledController.lastPattern.Name, patterns.Off.Name)
 	}
 }
 
