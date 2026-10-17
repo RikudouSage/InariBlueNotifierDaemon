@@ -172,6 +172,7 @@ func New() (*Config, error) {
 			patterns.QuickFlash,
 			patterns.GentleGlow,
 			patterns.DelayedBeacon,
+			patterns.Steady,
 			patterns.Off,
 		}
 

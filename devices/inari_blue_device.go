@@ -29,6 +29,8 @@ const (
 
 	// Hardware pattern mode, independent channels (SYNC=0, MD=1, CUR=15).
 	inariBlueChannelPatternMode byte = 0x1f
+	// Manual mode, independent channels and no fades (SYNC=0, MD=0, CUR=15).
+	inariBlueChannelManualMode byte = 0x0f
 
 	inariBlueAllChannelsDisabled byte = 0x00
 
@@ -164,12 +166,23 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 		return err
 	}
 
+	return receiver.applyPattern(pattern)
+}
+
+// applyPattern expects a validated pattern and the device lock to be held.
+func (receiver *InariBlueDevice) applyPattern(pattern patterns.Pattern) error {
 	if pattern.Brightness == 0 {
 		return receiver.disable()
 	}
 
-	rise, hold := encodeDuration(pattern.Rise), encodeDuration(pattern.Hold)
-	decay, off, delay := encodeDuration(pattern.Decay), encodeDuration(pattern.Off), encodeDuration(pattern.Delay)
+	var rise, hold, decay, off, delay byte
+	channelMode := inariBlueChannelPatternMode
+	if pattern.Hold == patterns.HoldIndefinitely {
+		channelMode = inariBlueChannelManualMode
+	} else {
+		rise, hold = encodeDuration(pattern.Rise), encodeDuration(pattern.Hold)
+		decay, off, delay = encodeDuration(pattern.Decay), encodeDuration(pattern.Off), encodeDuration(pattern.Delay)
+	}
 
 	if err := receiver.disable(); err != nil {
 		return err
@@ -208,7 +221,7 @@ func (receiver *InariBlueDevice) ApplyPattern(pattern patterns.Pattern) error {
 			{timing + 1, (decay << 4) | off},
 			{timing + 2, (delay << 4) | pattern.Repeat},
 			{brightness, pattern.Brightness},
-			{config, inariBlueChannelPatternMode},
+			{config, channelMode},
 		}
 
 		for _, write := range writes {
