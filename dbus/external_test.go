@@ -190,6 +190,7 @@ func TestPlayPatternJSONRoundTripsBuiltInPatterns(t *testing.T) {
 		patterns.QuickFlash,
 		patterns.GentleGlow,
 		patterns.DelayedBeacon,
+		patterns.Steady,
 		patterns.MediumLengthBreath,
 	}
 
