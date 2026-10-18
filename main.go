@@ -48,7 +48,7 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 
 	if cfg.Knock.Enabled {
 		if err := knockController.StartListening(); err != nil {
-			return cleanup, fmt.Errorf("start knock controller: %w", err)
+			log.Printf("failed to start knock listener: %v", err)
 		}
 	}
 

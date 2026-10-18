@@ -64,8 +64,8 @@ func TestKnockEventCoordinatesCallsAndNotifications(t *testing.T) {
 	if err := receiver.updateLED(); err != nil {
 		t.Fatal(err)
 	}
-	if got := ledController.lastPattern.Name; got != patterns.SlowBlink.Name {
-		t.Fatalf("incoming call selected %q, want %q", got, patterns.SlowBlink.Name)
+	if got := ledController.lastPattern.Name; got != patterns.RapidBlink.Name {
+		t.Fatalf("incoming call selected %q, want active knock %q", got, patterns.RapidBlink.Name)
 	}
 	delete(receiver.incomingCalls, "/calls/one")
 	if err := receiver.updateLED(); err != nil {

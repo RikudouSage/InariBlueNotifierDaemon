@@ -4,6 +4,7 @@ import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/patterns"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,4 +98,19 @@ func TestStopClearsActiveKnockAndAllowsRestart(t *testing.T) {
 	}
 	connectTCP(t, receiver.listeners[0].Addr())
 	expectEvent(t, recorder.events, true, time.Second)
+}
+
+func TestInvalidBindAddressDoesNotOpenAnyListeners(t *testing.T) {
+	recorder := &recordingEvents{events: make(chan bool, 10)}
+	cfg := &config.Config{Knock: config.Knock{
+		Enabled: true, Pattern: patterns.RapidBlink,
+		Addresses: []string{"127.0.0.1", "invalid-address"}, Protocols: []string{"tcp"},
+	}}
+	receiver := New(cfg, recorder).(*knock)
+	if err := receiver.StartListening(); err == nil || !strings.Contains(err.Error(), "invalid-address") {
+		t.Fatalf("start error = %v, want invalid bind address", err)
+	}
+	if len(receiver.listeners) != 0 || len(receiver.packets) != 0 {
+		t.Fatal("listeners opened for invalid configuration")
+	}
 }

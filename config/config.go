@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -375,7 +374,13 @@ func New() (*Config, error) {
 		case *time.Duration:
 			*(ref.(*time.Duration)), err = val.Duration()
 			if err != nil {
-				*(ref.(*time.Duration)) = 1 * time.Minute
+				// Older versions saved duration values as unitless nanoseconds.
+				nanoseconds, legacyErr := strconv.ParseInt(val.String(), 10, 64)
+				if legacyErr == nil {
+					*(ref.(*time.Duration)) = time.Duration(nanoseconds)
+				} else {
+					*(ref.(*time.Duration)) = time.Minute
+				}
 				changedConfig = true
 			}
 		case *[]string:
@@ -399,13 +404,13 @@ func New() (*Config, error) {
 	if len(instance.Knock.Protocols) == 0 {
 		instance.Knock.Protocols = []string{"tcp", "udp"}
 	}
-	originalAddressesLen := len(instance.Knock.Addresses)
-	instance.Knock.Addresses = lo.Filter(instance.Knock.Addresses, func(item string, _ int) bool {
-		addr := net.ParseIP(item)
-		return addr != nil
-	})
-	if len(instance.Knock.Addresses) != originalAddressesLen {
-		changedConfig = true
+	// Preserve invalid addresses so the listener fails closed instead of
+	// silently falling back to a wildcard binding.
+	for i, address := range instance.Knock.Addresses {
+		instance.Knock.Addresses[i] = strings.TrimSpace(address)
+	}
+	if len(instance.Knock.Addresses) == 1 && instance.Knock.Addresses[0] == "" {
+		instance.Knock.Addresses = nil
 	}
 
 	if changedConfig {
@@ -502,7 +507,7 @@ func (receiver *Config) Save() error {
 	}
 	knock.Key(knockKeyPattern).SetValue(base64.RawStdEncoding.EncodeToString(lo.Must(json.Marshal(receiver.Knock.Pattern))))
 	knock.Key(knockKeyPort).SetValue(fmt.Sprintf("%d", receiver.Knock.Port))
-	knock.Key(knockKeyTimeout).SetValue(fmt.Sprintf("%d", receiver.Knock.Timeout))
+	knock.Key(knockKeyTimeout).SetValue(receiver.Knock.Timeout.String())
 	knock.Key(knockKeyProtocol).SetValue(strings.Join(receiver.Knock.Protocols, ","))
 	knock.Key(knockKeyAddresses).SetValue(strings.Join(receiver.Knock.Addresses, ","))
 
