@@ -5,6 +5,7 @@ import (
 	"InariBlueNotifier/config"
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/devices"
+	"InariBlueNotifier/knock"
 	"InariBlueNotifier/led"
 	"InariBlueNotifier/migrations"
 	"InariBlueNotifier/notifications"
@@ -21,27 +22,37 @@ import (
 
 func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
 	externalController := appdbus.NewExternalController(controller)
-
-	if err := externalController.Register(sessionBus); err != nil {
-		return nil, fmt.Errorf("register external controller: %w", err)
-	}
-
 	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
+	knockController := knock.New(cfg, controller)
+
+	cleanup = func() error {
+		return errors.Join(
+			mainController.Stop(),
+			externalController.Unregister(sessionBus),
+			knockController.StopListening(),
+		)
+	}
+
+	if err := externalController.Register(sessionBus); err != nil {
+		return cleanup, fmt.Errorf("register external controller: %w", err)
+	}
+
 	if err := mainController.Start(); err != nil {
 		cleanupErr := externalController.Unregister(sessionBus)
-		return nil, errors.Join(
+		return cleanup, errors.Join(
 			fmt.Errorf("start main controller: %w", err),
 			cleanupErr,
 		)
 	}
 
-	return func() error {
-		return errors.Join(
-			mainController.Stop(),
-			externalController.Unregister(sessionBus),
-		)
-	}, nil
+	if cfg.Knock.Enabled {
+		if err := knockController.StartListening(); err != nil {
+			return cleanup, fmt.Errorf("start knock controller: %w", err)
+		}
+	}
+
+	return cleanup, nil
 }
 
 func main() {
