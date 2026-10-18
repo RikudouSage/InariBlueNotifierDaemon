@@ -45,7 +45,7 @@ func TestExternalControllerExportsExpectedDBusMethods(t *testing.T) {
 		}
 	}
 
-	want := []string{"PlayPattern", "PlayPatternJSON", "Stop"}
+	want := []string{"GetKnockStatus", "PlayPattern", "PlayPatternJSON", "Stop"}
 	if !slices.Equal(exported, want) {
 		t.Fatalf("D-Bus methods = %v, want %v", exported, want)
 	}
@@ -293,5 +293,21 @@ func TestPlayPatternJSONPropagatesControllerError(t *testing.T) {
 	}
 	if len(ledController.played) != 1 {
 		t.Fatalf("played %d patterns, want 1", len(ledController.played))
+	}
+}
+
+func TestKnockStatusTracksStateAndFailure(t *testing.T) {
+	receiver := NewExternalController(&fakeExternalLEDController{})
+	status, active, message, err := receiver.GetKnockStatus()
+	if err != nil || status != KnockDisabled || active || message != "" {
+		t.Fatalf("initial status = %q active=%t message=%q err=%v", status, active, message, err)
+	}
+	receiver.UpdateKnockStatus(KnockStarting, "")
+	receiver.UpdateKnockStatus(KnockFailed, "socket failed")
+	receiver.KnockListening() // A worker can fail before startup returns.
+	receiver.UpdateKnockActive(true)
+	status, active, message, err = receiver.GetKnockStatus()
+	if err != nil || status != KnockFailed || !active || message != "socket failed" {
+		t.Fatalf("failed status = %q active=%t message=%q err=%v", status, active, message, err)
 	}
 }

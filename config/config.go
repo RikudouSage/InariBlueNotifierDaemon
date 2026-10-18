@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/samber/lo"
 	"gopkg.in/ini.v1"
@@ -32,11 +34,19 @@ const (
 	sectionConstraints         = "constraints"
 	sectionNotificationFilters = "notificationFilters"
 	sectionInternal            = "internal"
+	sectionKnock               = "knock"
 
 	constraintNameStartTime = "startTime"
 	constraintNameEndTime   = "endTime"
 
 	internalKeyMigratedVersion = "migratedVersion"
+
+	knockKeyEnabled   = "enabled"
+	knockKeyPattern   = "pattern"
+	knockKeyTimeout   = "timeout"
+	knockKeyProtocol  = "protocol"
+	knockKeyPort      = "port"
+	knockKeyAddresses = "addresses"
 )
 
 type EventType string
@@ -54,6 +64,15 @@ const (
 type Constraints struct {
 	StartTime dto.TimeOnly
 	EndTime   dto.TimeOnly
+}
+
+type Knock struct {
+	Enabled   bool
+	Pattern   patterns.Pattern
+	Port      uint16
+	Timeout   time.Duration
+	Protocols []string
+	Addresses []string
 }
 
 type Config struct {
@@ -76,6 +95,7 @@ type Config struct {
 
 	Events      map[EventType]bool
 	Constraints Constraints
+	Knock       Knock
 }
 
 type patternConfig struct {
@@ -317,6 +337,82 @@ func New() (*Config, error) {
 		}
 	}
 
+	knock := cfgRaw.Section(sectionKnock)
+	knockMap := map[string]any{
+		knockKeyEnabled:   &instance.Knock.Enabled,
+		knockKeyPattern:   &instance.Knock.Pattern,
+		knockKeyPort:      &instance.Knock.Port,
+		knockKeyTimeout:   &instance.Knock.Timeout,
+		knockKeyProtocol:  &instance.Knock.Protocols,
+		knockKeyAddresses: &instance.Knock.Addresses,
+	}
+	for key, ref := range knockMap {
+		val := knock.Key(key)
+		switch ref.(type) {
+		case *bool:
+			*(ref.(*bool)), err = val.Bool()
+			if err != nil {
+				*(ref.(*bool)) = false
+				changedConfig = true
+			}
+		case *uint16:
+			uintVal, err := val.Uint()
+			if err != nil {
+				*(ref.(*uint16)) = 10093
+				changedConfig = true
+				break
+			}
+			*(ref.(*uint16)) = uint16(uintVal)
+		case *patterns.Pattern:
+			patternVal, err := parsePattern(val.String())
+			if err != nil {
+				*(ref.(*patterns.Pattern)) = patterns.MediumLengthBreath
+				changedConfig = true
+				break
+			}
+			*(ref.(*patterns.Pattern)) = patternVal
+		case *time.Duration:
+			*(ref.(*time.Duration)), err = val.Duration()
+			if err != nil {
+				// Older versions saved duration values as unitless nanoseconds.
+				nanoseconds, legacyErr := strconv.ParseInt(val.String(), 10, 64)
+				if legacyErr == nil {
+					*(ref.(*time.Duration)) = time.Duration(nanoseconds)
+				} else {
+					*(ref.(*time.Duration)) = time.Minute
+				}
+				changedConfig = true
+			}
+		case *[]string:
+			*(ref.(*[]string)) = strings.Split(val.String(), ",")
+		}
+	}
+	if instance.Knock.Pattern.Name == "" {
+		instance.Knock.Pattern = patterns.MediumLengthBreath
+		changedConfig = true
+	}
+	if instance.Knock.Port == 0 {
+		instance.Knock.Port = 10093
+	}
+	originalProtocolsLen := len(instance.Knock.Protocols)
+	instance.Knock.Protocols = lo.Filter(instance.Knock.Protocols, func(item string, _ int) bool {
+		return item == "tcp" || item == "udp"
+	})
+	if len(instance.Knock.Protocols) != originalProtocolsLen {
+		changedConfig = true
+	}
+	if len(instance.Knock.Protocols) == 0 {
+		instance.Knock.Protocols = []string{"tcp", "udp"}
+	}
+	// Preserve invalid addresses so the listener fails closed instead of
+	// silently falling back to a wildcard binding.
+	for i, address := range instance.Knock.Addresses {
+		instance.Knock.Addresses[i] = strings.TrimSpace(address)
+	}
+	if len(instance.Knock.Addresses) == 1 && instance.Knock.Addresses[0] == "" {
+		instance.Knock.Addresses = nil
+	}
+
 	if changedConfig {
 		_ = cfgFile.Close()
 		if err = instance.Save(); err != nil {
@@ -403,6 +499,17 @@ func (receiver *Config) Save() error {
 	for key, value := range timeConstraints {
 		cfgRaw.Section(sectionConstraints).Key(key).SetValue(value.String())
 	}
+
+	knock := cfgRaw.Section(sectionKnock)
+	knock.Key(knockKeyEnabled).SetValue(strconv.FormatBool(receiver.Knock.Enabled))
+	if err := receiver.Knock.Pattern.Validate(); err != nil {
+		return fmt.Errorf("the custom pattern for filter knock is not valid: %w", err)
+	}
+	knock.Key(knockKeyPattern).SetValue(base64.RawStdEncoding.EncodeToString(lo.Must(json.Marshal(receiver.Knock.Pattern))))
+	knock.Key(knockKeyPort).SetValue(fmt.Sprintf("%d", receiver.Knock.Port))
+	knock.Key(knockKeyTimeout).SetValue(receiver.Knock.Timeout.String())
+	knock.Key(knockKeyProtocol).SetValue(strings.Join(receiver.Knock.Protocols, ","))
+	knock.Key(knockKeyAddresses).SetValue(strings.Join(receiver.Knock.Addresses, ","))
 
 	cfgRaw.Section(sectionInternal).Key(internalKeyMigratedVersion).SetValue(strconv.FormatInt(int64(receiver.MigratedVersion), 10))
 

@@ -5,6 +5,7 @@ import (
 	"InariBlueNotifier/config"
 	appdbus "InariBlueNotifier/dbus"
 	"InariBlueNotifier/devices"
+	"InariBlueNotifier/knock"
 	"InariBlueNotifier/led"
 	"InariBlueNotifier/migrations"
 	"InariBlueNotifier/notifications"
@@ -21,27 +22,61 @@ import (
 
 func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
 	externalController := appdbus.NewExternalController(controller)
-
-	if err := externalController.Register(sessionBus); err != nil {
-		return nil, fmt.Errorf("register external controller: %w", err)
-	}
-
 	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
+	knockEvents := &knockEventController{controller: mainController, external: externalController}
+	knockController := knock.New(cfg, knockEvents, func(err error) {
+		externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
+	})
+	if cfg.Knock.Enabled {
+		externalController.UpdateKnockStatus(appdbus.KnockStarting, "")
+	}
+
+	cleanup = func() error {
+		knockErr := knockController.StopListening()
+		if cfg.Knock.Enabled {
+			externalController.UpdateKnockStatus(appdbus.KnockStopped, "")
+		}
+		return errors.Join(
+			knockErr,
+			mainController.Stop(),
+			externalController.Unregister(sessionBus),
+		)
+	}
+
+	if err := externalController.Register(sessionBus); err != nil {
+		return cleanup, fmt.Errorf("register external controller: %w", err)
+	}
+
 	if err := mainController.Start(); err != nil {
 		cleanupErr := externalController.Unregister(sessionBus)
-		return nil, errors.Join(
+		return cleanup, errors.Join(
 			fmt.Errorf("start main controller: %w", err),
 			cleanupErr,
 		)
 	}
 
-	return func() error {
-		return errors.Join(
-			mainController.Stop(),
-			externalController.Unregister(sessionBus),
-		)
-	}, nil
+	if cfg.Knock.Enabled {
+		if err := knockController.StartListening(); err != nil {
+			log.Printf("failed to start knock listener: %v", err)
+			externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
+		} else {
+			externalController.KnockListening()
+		}
+	}
+
+	return cleanup, nil
+}
+
+type knockEventController struct {
+	controller appdbus.Controller
+	external   *appdbus.ExternalController
+}
+
+func (receiver *knockEventController) SetKnockActive(active bool) error {
+	err := receiver.controller.SetKnockActive(active)
+	receiver.external.UpdateKnockActive(active)
+	return err
 }
 
 func main() {
