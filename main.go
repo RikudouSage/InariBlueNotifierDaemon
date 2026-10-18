@@ -20,26 +20,29 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
+func start(controller led.Controller, sessionBus, systemBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
 	externalController := appdbus.NewExternalController(controller)
 	notificationMatcher := notifications.DefaultMatcher(cfg)
-	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
+	mainController := appdbus.NewControllerWithConfig(sessionBus, systemBus, controller, cfg, notificationMatcher)
 	knockEvents := &knockEventController{controller: mainController, external: externalController}
 	knockController := knock.New(cfg, knockEvents, func(err error) {
 		externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
 	})
+	mainController.SetKnockClearHandler(knockController.ClearActive)
 	if cfg.Knock.Enabled {
 		externalController.UpdateKnockStatus(appdbus.KnockStarting, "")
 	}
 
 	cleanup = func() error {
+		controllerErr := mainController.Stop()
 		knockErr := knockController.StopListening()
 		if cfg.Knock.Enabled {
 			externalController.UpdateKnockStatus(appdbus.KnockStopped, "")
 		}
+
 		return errors.Join(
 			knockErr,
-			mainController.Stop(),
+			controllerErr,
 			externalController.Unregister(sessionBus),
 		)
 	}
@@ -185,7 +188,7 @@ func main() {
 				continue
 			}
 
-			stopServices, err = start(ledController, sessionBus, cfg)
+			stopServices, err = start(ledController, sessionBus, systemBus, cfg)
 			if err != nil {
 				log.Printf("failed to start services: %v", err)
 				cleanup()
@@ -236,7 +239,7 @@ func main() {
 
 			ledController = newController
 
-			stopServices, err = start(ledController, sessionBus, cfg)
+			stopServices, err = start(ledController, sessionBus, systemBus, cfg)
 			if err != nil {
 				log.Printf("failed to start services: %v", err)
 				cleanup()

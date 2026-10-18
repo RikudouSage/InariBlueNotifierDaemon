@@ -19,6 +19,7 @@ var ErrDisabled = errors.New("knock is not enabled, refusing to start")
 type Knock interface {
 	StartListening() error
 	StopListening() error
+	ClearActive()
 }
 
 // EventController coordinates the knock event with other LED events.
@@ -35,6 +36,7 @@ type knock struct {
 	listeners []net.Listener
 	packets   []net.PacketConn
 	done      chan struct{}
+	clear     chan struct{}
 	workers   sync.WaitGroup
 }
 
@@ -161,11 +163,13 @@ func (receiver *knock) StartListening() error {
 
 	receiver.listeners, receiver.packets = listeners, packets
 	receiver.done = make(chan struct{})
+	receiver.clear = make(chan struct{})
 	done := receiver.done
+	clear := receiver.clear
 	events := make(chan struct{})
 
 	receiver.workers.Go(func() {
-		receiver.handleKnocks(done, events, settings)
+		receiver.handleKnocks(done, events, clear, settings)
 	})
 
 	for _, listener := range listeners {
@@ -202,9 +206,25 @@ func (receiver *knock) StopListening() error {
 	}
 
 	receiver.workers.Wait()
-	receiver.listeners, receiver.packets, receiver.done = nil, nil, nil
+	receiver.listeners, receiver.packets, receiver.done, receiver.clear = nil, nil, nil, nil
 
 	return errors.Join(closeErrors...)
+}
+
+// ClearActive clears the current knock without stopping the network listeners.
+func (receiver *knock) ClearActive() {
+	receiver.mu.Lock()
+	done, clear := receiver.done, receiver.clear
+	receiver.mu.Unlock()
+
+	if done == nil {
+		return
+	}
+
+	select {
+	case clear <- struct{}{}:
+	case <-done:
+	}
 }
 
 func (*knock) notify(done <-chan struct{}, events chan<- struct{}) bool {
@@ -255,7 +275,7 @@ func (receiver *knock) listenerFailed(err error) {
 	}
 }
 
-func (receiver *knock) handleKnocks(done <-chan struct{}, events <-chan struct{}, settings config.Knock) {
+func (receiver *knock) handleKnocks(done <-chan struct{}, events, clear <-chan struct{}, settings config.Knock) {
 	var timer *time.Timer
 	var timeout <-chan time.Time
 	active := false
@@ -294,6 +314,18 @@ func (receiver *knock) handleKnocks(done <-chan struct{}, events <-chan struct{}
 				timeout = timer.C
 			}
 		case <-timeout:
+			timeout = nil
+			active = false
+			if err := receiver.controller.SetKnockActive(false); err != nil {
+				log.Printf("failed to clear knock event: %v", err)
+			}
+		case <-clear:
+			if !active {
+				continue
+			}
+			if timer != nil {
+				timer.Stop()
+			}
 			timeout = nil
 			active = false
 			if err := receiver.controller.SetKnockActive(false); err != nil {

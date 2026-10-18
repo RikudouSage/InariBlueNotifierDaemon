@@ -41,12 +41,13 @@ const (
 
 	internalKeyMigratedVersion = "migratedVersion"
 
-	knockKeyEnabled   = "enabled"
-	knockKeyPattern   = "pattern"
-	knockKeyTimeout   = "timeout"
-	knockKeyProtocol  = "protocol"
-	knockKeyPort      = "port"
-	knockKeyAddresses = "addresses"
+	knockKeyEnabled      = "enabled"
+	knockKeyPattern      = "pattern"
+	knockKeyTimeout      = "timeout"
+	knockKeyProtocol     = "protocol"
+	knockKeyPort         = "port"
+	knockKeyAddresses    = "addresses"
+	knockKeyStopOnUnlock = "stopOnUnlock"
 )
 
 type EventType string
@@ -67,12 +68,13 @@ type Constraints struct {
 }
 
 type Knock struct {
-	Enabled   bool
-	Pattern   patterns.Pattern
-	Port      uint16
-	Timeout   time.Duration
-	Protocols []string
-	Addresses []string
+	Enabled      bool
+	Pattern      patterns.Pattern
+	Port         uint16
+	Timeout      time.Duration
+	Protocols    []string
+	Addresses    []string
+	StopOnUnlock bool
 }
 
 type Config struct {
@@ -339,12 +341,13 @@ func New() (*Config, error) {
 
 	knock := cfgRaw.Section(sectionKnock)
 	knockMap := map[string]any{
-		knockKeyEnabled:   &instance.Knock.Enabled,
-		knockKeyPattern:   &instance.Knock.Pattern,
-		knockKeyPort:      &instance.Knock.Port,
-		knockKeyTimeout:   &instance.Knock.Timeout,
-		knockKeyProtocol:  &instance.Knock.Protocols,
-		knockKeyAddresses: &instance.Knock.Addresses,
+		knockKeyEnabled:      &instance.Knock.Enabled,
+		knockKeyPattern:      &instance.Knock.Pattern,
+		knockKeyPort:         &instance.Knock.Port,
+		knockKeyTimeout:      &instance.Knock.Timeout,
+		knockKeyProtocol:     &instance.Knock.Protocols,
+		knockKeyAddresses:    &instance.Knock.Addresses,
+		knockKeyStopOnUnlock: &instance.Knock.StopOnUnlock,
 	}
 	for key, ref := range knockMap {
 		val := knock.Key(key)
@@ -512,6 +515,7 @@ func (receiver *Config) Save() error {
 	knock.Key(knockKeyTimeout).SetValue(strconv.FormatInt(int64(receiver.Knock.Timeout), 10))
 	knock.Key(knockKeyProtocol).SetValue(strings.Join(receiver.Knock.Protocols, ","))
 	knock.Key(knockKeyAddresses).SetValue(strings.Join(receiver.Knock.Addresses, ","))
+	knock.Key(knockKeyStopOnUnlock).SetValue(strconv.FormatBool(receiver.Knock.StopOnUnlock))
 
 	cfgRaw.Section(sectionInternal).Key(internalKeyMigratedVersion).SetValue(strconv.FormatInt(int64(receiver.MigratedVersion), 10))
 
