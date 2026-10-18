@@ -384,7 +384,9 @@ func New() (*Config, error) {
 				*(ref.(*time.Duration)) = time.Duration(nanoseconds)
 			}
 		case *[]string:
-			*(ref.(*[]string)) = strings.Split(val.String(), ",")
+			*(ref.(*[]string)) = lo.Map(strings.Split(val.String(), ","), func(item string, _ int) string {
+				return strings.TrimSpace(item)
+			})
 		}
 	}
 	if instance.Knock.Pattern.Name == "" {
