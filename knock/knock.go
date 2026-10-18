@@ -29,6 +29,7 @@ type EventController interface {
 type knock struct {
 	config     *config.Config
 	controller EventController
+	onFailure  func(error)
 
 	mu        sync.Mutex
 	listeners []net.Listener
@@ -37,10 +38,11 @@ type knock struct {
 	workers   sync.WaitGroup
 }
 
-func New(config *config.Config, controller EventController) Knock {
+func New(config *config.Config, controller EventController, onFailure func(err error)) Knock {
 	return &knock{
 		config:     config,
 		controller: controller,
+		onFailure:  onFailure,
 	}
 }
 
@@ -219,7 +221,7 @@ func (receiver *knock) listenTCP(done <-chan struct{}, events chan<- struct{}, l
 		connection, err := listener.Accept()
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
-				log.Printf("knock TCP listener stopped: %v", err)
+				receiver.listenerFailed(fmt.Errorf("TCP listener stopped: %w", err))
 			}
 			return
 		}
@@ -236,13 +238,20 @@ func (receiver *knock) listenUDP(done <-chan struct{}, events chan<- struct{}, p
 		_, _, err := packet.ReadFrom(buffer)
 		if err != nil {
 			if !errors.Is(err, net.ErrClosed) {
-				log.Printf("knock UDP listener stopped: %v", err)
+				receiver.listenerFailed(fmt.Errorf("UDP listener stopped: %w", err))
 			}
 			return
 		}
 		if !receiver.notify(done, events) {
 			return
 		}
+	}
+}
+
+func (receiver *knock) listenerFailed(err error) {
+	log.Printf("knock %v", err)
+	if receiver.onFailure != nil {
+		receiver.onFailure(err)
 	}
 }
 

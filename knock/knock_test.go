@@ -3,6 +3,7 @@ package knock
 import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/patterns"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -58,7 +59,7 @@ func TestKnocksActivateOnceAndExtendTimeout(t *testing.T) {
 		Addresses: []string{"127.0.0.1"}, Protocols: []string{"tcp", "udp"},
 		Timeout: 600 * time.Millisecond,
 	}}
-	receiver := New(cfg, recorder).(*knock)
+	receiver := New(cfg, recorder, nil).(*knock)
 	if err := receiver.StartListening(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -82,7 +83,7 @@ func TestStopClearsActiveKnockAndAllowsRestart(t *testing.T) {
 		Enabled: true, Pattern: patterns.RapidBlink,
 		Addresses: []string{"127.0.0.1"}, Protocols: []string{"tcp"},
 	}}
-	receiver := New(cfg, recorder).(*knock)
+	receiver := New(cfg, recorder, nil).(*knock)
 	if err := receiver.StartListening(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -106,11 +107,31 @@ func TestInvalidBindAddressDoesNotOpenAnyListeners(t *testing.T) {
 		Enabled: true, Pattern: patterns.RapidBlink,
 		Addresses: []string{"127.0.0.1", "invalid-address"}, Protocols: []string{"tcp"},
 	}}
-	receiver := New(cfg, recorder).(*knock)
+	receiver := New(cfg, recorder, nil).(*knock)
 	if err := receiver.StartListening(); err == nil || !strings.Contains(err.Error(), "invalid-address") {
 		t.Fatalf("start error = %v, want invalid bind address", err)
 	}
 	if len(receiver.listeners) != 0 || len(receiver.packets) != 0 {
 		t.Fatal("listeners opened for invalid configuration")
+	}
+}
+
+type failingListener struct{}
+
+func (*failingListener) Accept() (net.Conn, error) { return nil, errors.New("accept failed") }
+func (*failingListener) Close() error              { return nil }
+func (*failingListener) Addr() net.Addr            { return &net.TCPAddr{} }
+
+func TestListenerFailureIsReported(t *testing.T) {
+	failures := make(chan error, 1)
+	receiver := New(nil, nil, func(err error) { failures <- err }).(*knock)
+	receiver.listenTCP(make(chan struct{}), make(chan struct{}), &failingListener{})
+	select {
+	case err := <-failures:
+		if !strings.Contains(err.Error(), "accept failed") {
+			t.Fatalf("failure = %v, want accept error", err)
+		}
+	default:
+		t.Fatal("listener failure was not reported")
 	}
 }

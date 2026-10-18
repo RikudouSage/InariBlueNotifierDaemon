@@ -24,11 +24,21 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 	externalController := appdbus.NewExternalController(controller)
 	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
-	knockController := knock.New(cfg, mainController)
+	knockEvents := &knockEventController{controller: mainController, external: externalController}
+	knockController := knock.New(cfg, knockEvents, func(err error) {
+		externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
+	})
+	if cfg.Knock.Enabled {
+		externalController.UpdateKnockStatus(appdbus.KnockStarting, "")
+	}
 
 	cleanup = func() error {
+		knockErr := knockController.StopListening()
+		if cfg.Knock.Enabled {
+			externalController.UpdateKnockStatus(appdbus.KnockStopped, "")
+		}
 		return errors.Join(
-			knockController.StopListening(),
+			knockErr,
 			mainController.Stop(),
 			externalController.Unregister(sessionBus),
 		)
@@ -49,10 +59,24 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 	if cfg.Knock.Enabled {
 		if err := knockController.StartListening(); err != nil {
 			log.Printf("failed to start knock listener: %v", err)
+			externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
+		} else {
+			externalController.KnockListening()
 		}
 	}
 
 	return cleanup, nil
+}
+
+type knockEventController struct {
+	controller appdbus.Controller
+	external   *appdbus.ExternalController
+}
+
+func (receiver *knockEventController) SetKnockActive(active bool) error {
+	err := receiver.controller.SetKnockActive(active)
+	receiver.external.UpdateKnockActive(active)
+	return err
 }
 
 func main() {

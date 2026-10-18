@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+	"sync"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -16,15 +18,86 @@ const (
 	externalDBusName      = "dev.rikudou.InariBlueNotifier"
 	externalDBusObject    = "/dev/rikudou/InariBlueNotifier"
 	externalDBusInterface = "dev.rikudou.InariBlueNotifier"
+
+	KnockDisabled  = "disabled"
+	KnockStarting  = "starting"
+	KnockListening = "listening"
+	KnockFailed    = "failed"
+	KnockStopped   = "stopped"
 )
 
 type ExternalController struct {
 	ledController led.Controller
+
+	statusMutex sync.Mutex
+	statusConn  *dbus.Conn
+	knockStatus string
+	knockActive bool
+	knockError  string
 }
 
 func NewExternalController(ledController led.Controller) *ExternalController {
 	return &ExternalController{
 		ledController: ledController,
+		knockStatus:   KnockDisabled,
+	}
+}
+
+// GetKnockStatus returns listener state, whether a knock is active, and an
+// error message (empty except when the listener has failed). The same three
+// values are sent in the KnockStatusChanged D-Bus signal.
+func (receiver *ExternalController) GetKnockStatus() (status string, active bool, err string, dbusErr *dbus.Error) {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	return receiver.knockStatus, receiver.knockActive, receiver.knockError, nil
+}
+
+// UpdateKnockStatus publishes a listener state change to D-Bus clients.
+func (receiver *ExternalController) UpdateKnockStatus(status, message string) {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	if receiver.knockStatus == status && receiver.knockError == message {
+		return
+	}
+
+	receiver.knockStatus, receiver.knockError = status, message
+	receiver.emitKnockStatus()
+}
+
+// KnockListening records successful startup unless a worker already failed.
+func (receiver *ExternalController) KnockListening() {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	if receiver.knockStatus != KnockStarting {
+		return
+	}
+
+	receiver.knockStatus, receiver.knockError = KnockListening, ""
+	receiver.emitKnockStatus()
+}
+
+// UpdateKnockActive publishes whether the temporary knock event is active.
+func (receiver *ExternalController) UpdateKnockActive(active bool) {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	if receiver.knockActive == active {
+		return
+	}
+
+	receiver.knockActive = active
+	receiver.emitKnockStatus()
+}
+
+// emitKnockStatus must be called with statusMutex held to preserve ordering.
+func (receiver *ExternalController) emitKnockStatus() {
+	if receiver.statusConn != nil {
+		if err := receiver.statusConn.Emit(externalDBusObject, externalDBusInterface+".KnockStatusChanged", receiver.knockStatus, receiver.knockActive, receiver.knockError); err != nil {
+			log.Printf("failed to emit knock status: %v", err)
+		}
 	}
 }
 
@@ -98,10 +171,18 @@ func (receiver *ExternalController) Register(connection *dbus.Conn) error {
 		return fmt.Errorf("external D-Bus name already owned")
 	}
 
+	receiver.statusMutex.Lock()
+	receiver.statusConn = connection
+	receiver.statusMutex.Unlock()
+
 	return nil
 }
 
 func (receiver *ExternalController) Unregister(connection *dbus.Conn) error {
+	receiver.statusMutex.Lock()
+	receiver.statusConn = nil
+	receiver.statusMutex.Unlock()
+
 	if err := connection.Export(nil, externalDBusObject, externalDBusInterface); err != nil {
 		return fmt.Errorf("unexport external D-Bus interface: %w", err)
 	}
