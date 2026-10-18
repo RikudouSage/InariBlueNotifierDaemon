@@ -101,6 +101,33 @@ func TestStopClearsActiveKnockAndAllowsRestart(t *testing.T) {
 	expectEvent(t, recorder.events, true, time.Second)
 }
 
+func TestClearActiveKeepsListenerAndCancelsOldTimeout(t *testing.T) {
+	recorder := &recordingEvents{events: make(chan bool, 10)}
+	cfg := &config.Config{Knock: config.Knock{
+		Enabled: true, Pattern: patterns.RapidBlink,
+		Addresses: []string{"127.0.0.1"}, Protocols: []string{"tcp"},
+		Timeout: 400 * time.Millisecond,
+	}}
+	receiver := New(cfg, recorder, nil).(*knock)
+	if err := receiver.StartListening(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = receiver.StopListening() })
+	connectTCP(t, receiver.listeners[0].Addr())
+	expectEvent(t, recorder.events, true, time.Second)
+	time.Sleep(250 * time.Millisecond)
+	receiver.ClearActive()
+	expectEvent(t, recorder.events, false, time.Second)
+	connectTCP(t, receiver.listeners[0].Addr())
+	expectEvent(t, recorder.events, true, time.Second)
+	select {
+	case event := <-recorder.events:
+		t.Fatalf("old timeout cleared the new knock: %t", event)
+	case <-time.After(250 * time.Millisecond):
+	}
+	expectEvent(t, recorder.events, false, time.Second)
+}
+
 func TestInvalidBindAddressDoesNotOpenAnyListeners(t *testing.T) {
 	recorder := &recordingEvents{events: make(chan bool, 10)}
 	cfg := &config.Config{Knock: config.Knock{

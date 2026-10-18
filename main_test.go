@@ -4,6 +4,7 @@ import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/patterns"
 	"bufio"
+	"fmt"
 	"net"
 	"os/exec"
 	"strings"
@@ -80,7 +81,7 @@ func TestStartKeepsOtherServicesRunningWhenKnockCannotBind(t *testing.T) {
 	cfg.Knock.Addresses = []string{"127.0.0.1"}
 	cfg.Knock.Port = uint16(blocked.Addr().(*net.TCPAddr).Port)
 
-	cleanup, err := start(&testLEDController{}, bus, cfg)
+	cleanup, err := start(&testLEDController{}, bus, bus, cfg)
 	if err != nil {
 		t.Fatalf("start services with occupied knock port: %v", err)
 	}
@@ -172,7 +173,7 @@ func TestKnockStatusDBusSignals(t *testing.T) {
 	cfg.Knock.Addresses = []string{"127.0.0.1"}
 	cfg.Knock.Timeout = 500 * time.Millisecond
 
-	cleanup, err := start(&testLEDController{}, bus, cfg)
+	cleanup, err := start(&testLEDController{}, bus, bus, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,4 +204,87 @@ func TestKnockStatusDBusSignals(t *testing.T) {
 	}
 	stopped = true
 	waitKnockSignal(t, signals, "stopped", false)
+}
+
+func TestUnlockClearsActiveKnockWhenConfigured(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stop-on-unlock-%t", enabled), func(t *testing.T) {
+			bus := testSessionBus(t)
+			mce, err := dbus.ConnectSessionBus()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = mce.Close() })
+			if reply, err := mce.RequestName("com.nokia.mce", dbus.NameFlagDoNotQueue); err != nil || reply != dbus.RequestNameReplyPrimaryOwner {
+				t.Fatalf("claim MCE service: reply=%v err=%v", reply, err)
+			}
+			client, err := dbus.ConnectSessionBus()
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = client.Close() })
+			signals := make(chan *dbus.Signal, 10)
+			client.Signal(signals)
+			if err := client.AddMatchSignal(dbus.WithMatchInterface("dev.rikudou.InariBlueNotifier"), dbus.WithMatchMember("KnockStatusChanged")); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := config.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			probe, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			address := probe.Addr().String()
+			cfg.Knock.Port = uint16(probe.Addr().(*net.TCPAddr).Port)
+			_ = probe.Close()
+			cfg.Knock.Enabled = true
+			cfg.Knock.StopOnUnlock = enabled
+			cfg.Knock.Protocols = []string{"tcp"}
+			cfg.Knock.Addresses = []string{"127.0.0.1"}
+			cfg.Knock.Timeout = 0
+			cleanup, err := start(&testLEDController{}, bus, bus, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = cleanup() })
+			waitKnockSignal(t, signals, "listening", false)
+			connection, err := net.DialTimeout("tcp", address, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = connection.Close()
+			waitKnockSignal(t, signals, "listening", true)
+			if err := mce.Emit("/com/nokia/mce/signal", "com.nokia.mce.signal.display_status_ind", "on"); err != nil {
+				t.Fatal(err)
+			}
+			if err := mce.Emit("/com/nokia/mce/signal", "com.nokia.mce.signal.tklock_mode_ind", "locked"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case signal := <-signals:
+				t.Fatalf("display or lock signal changed knock status: %#v", signal)
+			case <-time.After(100 * time.Millisecond):
+			}
+			if err := mce.Emit("/com/nokia/mce/signal", "com.nokia.mce.signal.tklock_mode_ind", "unlocked"); err != nil {
+				t.Fatal(err)
+			}
+			if enabled {
+				waitKnockSignal(t, signals, "listening", false)
+				connection, err := net.DialTimeout("tcp", address, time.Second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_ = connection.Close()
+				waitKnockSignal(t, signals, "listening", true)
+			} else {
+				select {
+				case signal := <-signals:
+					t.Fatalf("unlock changed knock status with option disabled: %#v", signal)
+				case <-time.After(100 * time.Millisecond):
+				}
+			}
+		})
+	}
 }

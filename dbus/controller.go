@@ -28,12 +28,15 @@ type Controller interface {
 	Start() error
 	Stop() error
 	SetKnockActive(active bool) error
+	SetKnockClearHandler(handler func())
 }
 
 type controller struct {
 	connection          *dbus.Conn
+	systemConnection    *dbus.Conn
 	ledController       led.Controller
 	notificationMatcher *notifications.Matcher
+	clearKnock          func()
 
 	now func() time.Time
 
@@ -49,6 +52,14 @@ type controller struct {
 
 	activeNotifications      map[uint32]trackedNotification
 	pendingNotificationCalls map[uint32]trackedNotification
+}
+
+// SetKnockClearHandler sets the action used to clear the current knock.
+func (receiver *controller) SetKnockClearHandler(handler func()) {
+	receiver.mutex.Lock()
+	defer receiver.mutex.Unlock()
+
+	receiver.clearKnock = handler
 }
 
 // SetKnockActive updates the knock event and selects the appropriate LED state.
@@ -68,7 +79,7 @@ func (receiver *controller) SetKnockActive(active bool) error {
 // patterns and selects the favourite pattern when the contacts helper is
 // available over the session bus.
 func NewControllerWithConfig(
-	connection *dbus.Conn,
+	connection, systemConnection *dbus.Conn,
 	ledController led.Controller,
 	configuration *config.Config,
 	matcher *notifications.Matcher,
@@ -84,6 +95,7 @@ func NewControllerWithConfig(
 
 	return &controller{
 		connection:               connection,
+		systemConnection:         systemConnection,
 		ledController:            ledController,
 		notificationMatcher:      matcher,
 		config:                   configuration,
@@ -121,8 +133,31 @@ func (receiver *controller) Start() error {
 	}
 	log.Printf("subscribed to voice call status changes")
 
+	var unlockSignals chan *dbus.Signal
+	var unlockMatch []dbus.MatchOption
+	if receiver.config.Knock.Enabled && receiver.config.Knock.StopOnUnlock {
+		if receiver.clearKnock == nil {
+			_ = receiver.connection.RemoveMatchSignal(matchOptions...)
+			receiver.connection.RemoveSignal(signals)
+			return errors.New("unlock watcher requires a knock clear handler")
+		}
+
+		var err error
+		unlockSignals, unlockMatch, err = receiver.subscribeUnlock()
+		if err != nil {
+			_ = receiver.connection.RemoveMatchSignal(matchOptions...)
+			receiver.connection.RemoveSignal(signals)
+			return err
+		}
+	}
+
 	notificationMessages, notificationConnection, err := receiver.startNotificationMonitor()
 	if err != nil {
+		if unlockSignals != nil {
+			receiver.systemConnection.RemoveSignal(unlockSignals)
+			_ = receiver.systemConnection.RemoveMatchSignal(unlockMatch...)
+		}
+
 		_ = receiver.connection.RemoveMatchSignal(matchOptions...)
 		receiver.connection.RemoveSignal(signals)
 		return fmt.Errorf("start notification monitor: %w", err)
@@ -143,6 +178,14 @@ func (receiver *controller) Start() error {
 	watchers.Go(func() {
 		receiver.watchNotifications(ctx, notificationMessages, notificationConnection)
 	})
+
+	if unlockSignals != nil {
+		clearKnock := receiver.clearKnock
+		watchers.Go(func() {
+			receiver.watchUnlock(ctx, unlockSignals, unlockMatch, clearKnock)
+		})
+	}
+
 	go func() {
 		watchers.Wait()
 		close(receiver.done)
