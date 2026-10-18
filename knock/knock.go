@@ -1,9 +1,8 @@
-// Package knock plays an LED pattern when traffic reaches a configured port.
+// Package knock reports a temporary event when traffic reaches a configured port.
 package knock
 
 import (
 	"InariBlueNotifier/config"
-	"InariBlueNotifier/led"
 	"errors"
 	"fmt"
 	"log"
@@ -22,9 +21,14 @@ type Knock interface {
 	StopListening() error
 }
 
+// EventController coordinates the knock event with other LED events.
+type EventController interface {
+	SetKnockActive(active bool) error
+}
+
 type knock struct {
 	config     *config.Config
-	controller led.Controller
+	controller EventController
 
 	mu        sync.Mutex
 	listeners []net.Listener
@@ -33,7 +37,7 @@ type knock struct {
 	workers   sync.WaitGroup
 }
 
-func New(config *config.Config, controller led.Controller) Knock {
+func New(config *config.Config, controller EventController) Knock {
 	return &knock{
 		config:     config,
 		controller: controller,
@@ -56,7 +60,7 @@ func (receiver *knock) StartListening() error {
 		return errors.New("knock is already listening")
 	}
 	if receiver.controller == nil {
-		return errors.New("knock LED controller is nil")
+		return errors.New("knock event controller is nil")
 	}
 
 	settings := receiver.config.Knock
@@ -159,7 +163,7 @@ func (receiver *knock) StartListening() error {
 	events := make(chan struct{})
 
 	receiver.workers.Go(func() {
-		receiver.playKnocks(done, events, settings)
+		receiver.handleKnocks(done, events, settings)
 	})
 
 	for _, listener := range listeners {
@@ -176,8 +180,8 @@ func (receiver *knock) StartListening() error {
 	return nil
 }
 
-// StopListening closes the sockets and waits until no more patterns can be played.
-// It leaves the current LED state alone and can be followed by another start.
+// StopListening closes the sockets, clears an active knock, and waits for workers.
+// It can be followed by another start.
 func (receiver *knock) StopListening() error {
 	receiver.mu.Lock()
 	defer receiver.mu.Unlock()
@@ -242,12 +246,18 @@ func (receiver *knock) listenUDP(done <-chan struct{}, events chan<- struct{}, p
 	}
 }
 
-func (receiver *knock) playKnocks(done <-chan struct{}, events <-chan struct{}, settings config.Knock) {
+func (receiver *knock) handleKnocks(done <-chan struct{}, events <-chan struct{}, settings config.Knock) {
 	var timer *time.Timer
 	var timeout <-chan time.Time
+	active := false
 	defer func() {
 		if timer != nil {
 			timer.Stop()
+		}
+		if active {
+			if err := receiver.controller.SetKnockActive(false); err != nil {
+				log.Printf("failed to clear knock event: %v", err)
+			}
 		}
 	}()
 	for {
@@ -260,9 +270,11 @@ func (receiver *knock) playKnocks(done <-chan struct{}, events <-chan struct{}, 
 				return
 			default:
 			}
-			if err := receiver.controller.PlayPattern(settings.Pattern); err != nil {
-				log.Printf("failed to play knock pattern: %v", err)
-				continue
+			if !active {
+				active = true
+				if err := receiver.controller.SetKnockActive(true); err != nil {
+					log.Printf("failed to activate knock event: %v", err)
+				}
 			}
 			if settings.Timeout > 0 {
 				if timer == nil {
@@ -274,8 +286,9 @@ func (receiver *knock) playKnocks(done <-chan struct{}, events <-chan struct{}, 
 			}
 		case <-timeout:
 			timeout = nil
-			if err := receiver.controller.Stop(); err != nil {
-				log.Printf("failed to stop knock pattern: %v", err)
+			active = false
+			if err := receiver.controller.SetKnockActive(false); err != nil {
+				log.Printf("failed to clear knock event: %v", err)
 			}
 		}
 	}

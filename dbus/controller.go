@@ -27,6 +27,7 @@ const (
 type Controller interface {
 	Start() error
 	Stop() error
+	SetKnockActive(active bool) error
 }
 
 type controller struct {
@@ -44,9 +45,23 @@ type controller struct {
 
 	// incomingCalls maps each ringing call to whether its caller is a favourite.
 	incomingCalls map[dbus.ObjectPath]bool
+	knockActive   bool
 
 	activeNotifications      map[uint32]trackedNotification
 	pendingNotificationCalls map[uint32]trackedNotification
+}
+
+// SetKnockActive updates the knock event and selects the appropriate LED state.
+func (receiver *controller) SetKnockActive(active bool) error {
+	receiver.eventMutex.Lock()
+	defer receiver.eventMutex.Unlock()
+
+	if receiver.knockActive == active {
+		return nil
+	}
+	receiver.knockActive = active
+
+	return receiver.updateLED()
 }
 
 // NewControllerWithConfig creates a controller that uses the configured call

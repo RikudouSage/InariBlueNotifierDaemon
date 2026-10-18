@@ -43,6 +43,14 @@ func (receiver *controller) updateLED() error {
 	hasCustomNotification := receiver.hasActiveCustomNotification()
 
 	switch {
+	case receiver.knockActive:
+		pattern := receiver.config.Knock.Pattern
+		log.Printf("LED update: requested_pattern=%s reason=active knock", pattern.Name)
+		if err := receiver.ledController.PlayPattern(pattern); err != nil {
+			return err
+		}
+		return nil
+
 	case timeInRange && eventEnabled(config.EventFavoriteCall) && hasFavoriteCall(receiver.incomingCalls):
 		pattern := receiver.config.CallPattern
 		if receiver.config.FavoriteCallPattern != nil {

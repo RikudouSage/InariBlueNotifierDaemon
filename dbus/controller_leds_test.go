@@ -12,10 +12,12 @@ import (
 type recordingLEDController struct {
 	lastPattern patterns.Pattern
 	stopped     bool
+	plays       int
 }
 
 func (receiver *recordingLEDController) PlayPattern(pattern patterns.Pattern) error {
 	receiver.lastPattern = pattern
+	receiver.plays++
 	return nil
 }
 
@@ -28,6 +30,97 @@ func (receiver *recordingLEDController) Shutdown() error {
 	return nil
 }
 func (receiver *recordingLEDController) Done() <-chan struct{} { return nil }
+
+func TestKnockEventCoordinatesCallsAndNotifications(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			CallPattern:         patterns.SlowBlink,
+			NotificationPattern: patterns.QuickFlash,
+			OffPattern:          patterns.Off,
+			Knock:               config.Knock{Pattern: patterns.RapidBlink},
+			Events:              map[config.EventType]bool{config.EventCall: true, config.EventNotification: true},
+		},
+		incomingCalls:       make(map[dbus.ObjectPath]bool),
+		activeNotifications: trackedNotifications(1),
+		now:                 time.Now,
+	}
+
+	if err := receiver.SetKnockActive(true); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.RapidBlink.Name {
+		t.Fatalf("active knock selected %q, want %q", got, patterns.RapidBlink.Name)
+	}
+	if err := receiver.SetKnockActive(true); err != nil {
+		t.Fatal(err)
+	}
+	if ledController.plays != 1 {
+		t.Fatalf("repeated active event played %d patterns, want 1", ledController.plays)
+	}
+
+	receiver.incomingCalls["/calls/one"] = false
+	if err := receiver.updateLED(); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.SlowBlink.Name {
+		t.Fatalf("incoming call selected %q, want %q", got, patterns.SlowBlink.Name)
+	}
+	delete(receiver.incomingCalls, "/calls/one")
+	if err := receiver.updateLED(); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.RapidBlink.Name {
+		t.Fatalf("call ending selected %q, want active knock %q", got, patterns.RapidBlink.Name)
+	}
+	if err := receiver.SetKnockActive(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.QuickFlash.Name {
+		t.Fatalf("knock ending selected %q, want active notification %q", got, patterns.QuickFlash.Name)
+	}
+}
+
+func TestKnockEndingDoesNotStopActiveCall(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config: &config.Config{
+			CallPattern: patterns.SlowBlink,
+			Knock:       config.Knock{Pattern: patterns.RapidBlink},
+		},
+		incomingCalls: map[dbus.ObjectPath]bool{"/calls/one": true},
+		now:           time.Now,
+	}
+	if err := receiver.SetKnockActive(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := receiver.SetKnockActive(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.SlowBlink.Name || ledController.stopped {
+		t.Fatalf("knock ending selected %q (stopped=%t), want call %q", got, ledController.stopped, patterns.SlowBlink.Name)
+	}
+}
+
+func TestKnockEndingRestoresOffPattern(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		ledController: ledController,
+		config:        &config.Config{Knock: config.Knock{Pattern: patterns.RapidBlink}, OffPattern: patterns.Off},
+		now:           time.Now,
+	}
+	if err := receiver.SetKnockActive(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := receiver.SetKnockActive(false); err != nil {
+		t.Fatal(err)
+	}
+	if got := ledController.lastPattern.Name; got != patterns.Off.Name {
+		t.Fatalf("knock ending selected %q, want %q", got, patterns.Off.Name)
+	}
+}
 
 func TestUpdateLEDAppliesCallPattern(t *testing.T) {
 	normal := patterns.SlowBlink

@@ -24,13 +24,13 @@ func start(controller led.Controller, sessionBus *dbus.Conn, cfg *config.Config)
 	externalController := appdbus.NewExternalController(controller)
 	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, controller, cfg, notificationMatcher)
-	knockController := knock.New(cfg, controller)
+	knockController := knock.New(cfg, mainController)
 
 	cleanup = func() error {
 		return errors.Join(
+			knockController.StopListening(),
 			mainController.Stop(),
 			externalController.Unregister(sessionBus),
-			knockController.StopListening(),
 		)
 	}
 
