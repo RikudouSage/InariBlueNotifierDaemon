@@ -372,16 +372,16 @@ func New() (*Config, error) {
 			}
 			*(ref.(*patterns.Pattern)) = patternVal
 		case *time.Duration:
-			*(ref.(*time.Duration)), err = val.Duration()
+			nanoseconds, err := strconv.ParseInt(val.String(), 10, 64)
 			if err != nil {
-				// Older versions saved duration values as unitless nanoseconds.
-				nanoseconds, legacyErr := strconv.ParseInt(val.String(), 10, 64)
-				if legacyErr == nil {
-					*(ref.(*time.Duration)) = time.Duration(nanoseconds)
-				} else {
+				// Migrate duration strings saved by older versions.
+				*(ref.(*time.Duration)), err = val.Duration()
+				if err != nil {
 					*(ref.(*time.Duration)) = time.Minute
 				}
 				changedConfig = true
+			} else {
+				*(ref.(*time.Duration)) = time.Duration(nanoseconds)
 			}
 		case *[]string:
 			*(ref.(*[]string)) = strings.Split(val.String(), ",")
@@ -507,7 +507,7 @@ func (receiver *Config) Save() error {
 	}
 	knock.Key(knockKeyPattern).SetValue(base64.RawStdEncoding.EncodeToString(lo.Must(json.Marshal(receiver.Knock.Pattern))))
 	knock.Key(knockKeyPort).SetValue(fmt.Sprintf("%d", receiver.Knock.Port))
-	knock.Key(knockKeyTimeout).SetValue(receiver.Knock.Timeout.String())
+	knock.Key(knockKeyTimeout).SetValue(strconv.FormatInt(int64(receiver.Knock.Timeout), 10))
 	knock.Key(knockKeyProtocol).SetValue(strings.Join(receiver.Knock.Protocols, ","))
 	knock.Key(knockKeyAddresses).SetValue(strings.Join(receiver.Knock.Addresses, ","))
 

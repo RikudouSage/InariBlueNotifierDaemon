@@ -1,7 +1,6 @@
 package config
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -29,40 +28,53 @@ func TestKnockTimeoutRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value := saved.Section(sectionKnock).Key(knockKeyTimeout).String(); value != "37s" {
-		t.Fatalf("saved timeout = %q, want 37s", value)
+	if value := saved.Section(sectionKnock).Key(knockKeyTimeout).String(); value != "37000000000" {
+		t.Fatalf("saved timeout = %q, want 37000000000", value)
 	}
 }
 
 func TestLegacyKnockTimeoutIsMigrated(t *testing.T) {
-	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
-	cfg, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(configHome, "dev.rikudou", "inari-blue-notifier", "config_v3.ini")
-	raw, err := ini.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw.Section(sectionKnock).Key(knockKeyTimeout).SetValue("37000000000")
-	if err := raw.SaveTo(path); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Knock.Timeout != 37*time.Second {
-		t.Fatalf("legacy timeout = %s, want 37s", loaded.Knock.Timeout)
-	}
-	saved, err := ini.Load(cfg.cfgFilePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value := saved.Section(sectionKnock).Key(knockKeyTimeout).String(); value != "37s" {
-		t.Fatalf("migrated timeout = %q, want 37s", value)
+	for _, tt := range []struct {
+		name, input, saved string
+		want               time.Duration
+	}{
+		{"seconds", "37s", "37000000000", 37 * time.Second},
+		{"fractional duration", "1m0.000000001s", "60000000001", time.Minute + time.Nanosecond},
+		{"zero duration", "0s", "0", 0},
+		{"negative duration", "-1ms", "-1000000", -time.Millisecond},
+		{"numeric nanoseconds", "37000000000", "37000000000", 37 * time.Second},
+		{"invalid duration", "invalid", "60000000000", time.Minute},
+		{"overflow", "9223372036854775808", "60000000000", time.Minute},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			cfg, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := ini.Load(cfg.cfgFilePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw.Section(sectionKnock).Key(knockKeyTimeout).SetValue(tt.input)
+			if err := raw.SaveTo(cfg.cfgFilePath); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.Knock.Timeout != tt.want {
+				t.Fatalf("loaded timeout = %s, want %s", loaded.Knock.Timeout, tt.want)
+			}
+			saved, err := ini.Load(cfg.cfgFilePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if value := saved.Section(sectionKnock).Key(knockKeyTimeout).String(); value != tt.saved {
+				t.Fatalf("saved timeout = %q, want %q", value, tt.saved)
+			}
+		})
 	}
 }
 
