@@ -81,7 +81,7 @@ func TestStartKeepsOtherServicesRunningWhenKnockCannotBind(t *testing.T) {
 	cfg.Knock.Addresses = []string{"127.0.0.1"}
 	cfg.Knock.Port = uint16(blocked.Addr().(*net.TCPAddr).Port)
 
-	cleanup, err := start(&testLEDController{}, bus, bus, cfg)
+	cleanup, err := start(&testLEDController{}, bus, bus, cfg, config.NewLoggerWithoutFile())
 	if err != nil {
 		t.Fatalf("start services with occupied knock port: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestKnockStatusDBusSignals(t *testing.T) {
 	cfg.Knock.Addresses = []string{"127.0.0.1"}
 	cfg.Knock.Timeout = 500 * time.Millisecond
 
-	cleanup, err := start(&testLEDController{}, bus, bus, cfg)
+	cleanup, err := start(&testLEDController{}, bus, bus, cfg, config.NewLoggerWithoutFile())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestUnlockClearsActiveKnockWhenConfigured(t *testing.T) {
 			cfg.Knock.Protocols = []string{"tcp"}
 			cfg.Knock.Addresses = []string{"127.0.0.1"}
 			cfg.Knock.Timeout = 0
-			cleanup, err := start(&testLEDController{}, bus, bus, cfg)
+			cleanup, err := start(&testLEDController{}, bus, bus, cfg, config.NewLoggerWithoutFile())
 			if err != nil {
 				t.Fatal(err)
 			}

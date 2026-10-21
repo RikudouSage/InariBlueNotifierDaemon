@@ -1,13 +1,14 @@
 package dbus
 
 import (
+	"InariBlueNotifier/config"
 	"InariBlueNotifier/led"
 	"InariBlueNotifier/patterns"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -34,12 +35,15 @@ type ExternalController struct {
 	knockStatus string
 	knockActive bool
 	knockError  string
+
+	logger *config.Logger
 }
 
-func NewExternalController(ledController led.Controller) *ExternalController {
+func NewExternalController(ledController led.Controller, logger *config.Logger) *ExternalController {
 	return &ExternalController{
 		ledController: ledController,
 		knockStatus:   KnockDisabled,
+		logger:        logger,
 	}
 }
 
@@ -96,7 +100,7 @@ func (receiver *ExternalController) UpdateKnockActive(active bool) {
 func (receiver *ExternalController) emitKnockStatus() {
 	if receiver.statusConn != nil {
 		if err := receiver.statusConn.Emit(externalDBusObject, externalDBusInterface+".KnockStatusChanged", receiver.knockStatus, receiver.knockActive, receiver.knockError); err != nil {
-			log.Printf("failed to emit knock status: %v", err)
+			receiver.logger.Error("failed to emit knock status", slog.String("error", err.Error()))
 		}
 	}
 }

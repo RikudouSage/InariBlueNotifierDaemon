@@ -3,7 +3,7 @@ package dbus
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/godbus/dbus/v5"
 )
@@ -43,7 +43,7 @@ func (receiver *controller) watchUnlock(ctx context.Context, signals chan *dbus.
 	defer receiver.systemConnection.RemoveSignal(signals)
 	defer func() {
 		if err := receiver.systemConnection.RemoveMatchSignal(match...); err != nil {
-			log.Printf("failed to remove unlock signal match: %v", err)
+			receiver.logger.Error("failed to remove unlock signal match", slog.String("error", err.Error()))
 		}
 	}()
 

@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,7 +24,7 @@ func (receiver *controller) watchCalls(
 
 	defer func() {
 		if err := receiver.connection.RemoveMatchSignal(matchOptions...); err != nil {
-			log.Printf("failed to remove voice call match: %v", err)
+			receiver.logger.Error("failed to remove voice call match", slog.String("error", err.Error()))
 		}
 	}()
 
@@ -35,7 +35,7 @@ func (receiver *controller) watchCalls(
 
 		case signal, ok := <-signals:
 			if !ok {
-				log.Printf("voice call signal channel closed")
+				receiver.logger.Error("voice call signal channel closed")
 				return
 			}
 
@@ -54,12 +54,12 @@ func (receiver *controller) watchCalls(
 			}
 
 			if err := receiver.updateLED(); err != nil {
-				log.Printf(
-					"LED update failed after call signal: name=%s path=%s incoming_calls=%d: %v",
-					signal.Name,
-					signal.Path,
-					len(receiver.incomingCalls),
-					err,
+				receiver.logger.Error(
+					"LED update failed after call signal",
+					slog.String("name", signal.Name),
+					slog.String("path", string(signal.Path)),
+					slog.Int("incoming_calls", len(receiver.incomingCalls)),
+					slog.String("error", err.Error()),
 				)
 			}
 			receiver.eventMutex.Unlock()
@@ -69,13 +69,18 @@ func (receiver *controller) watchCalls(
 
 func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 	if len(signal.Body) == 0 {
-		log.Printf("ignored call status with no body: path=%s", signal.Path)
+		receiver.logger.Warn("ignored call status with no body", slog.String("path", string(signal.Path)))
 		return
 	}
 
 	status, err := parseCallStatus(signal.Body)
 	if err != nil {
-		log.Printf("failed to parse call status: path=%s body=%#v: %v", signal.Path, signal.Body, err)
+		receiver.logger.Error(
+			"failed to parse call status",
+			slog.String("path", string(signal.Path)),
+			slog.String("body", fmt.Sprintf("%#v", signal.Body)),
+			slog.String("error", err.Error()),
+		)
 		return
 	}
 
@@ -103,14 +108,14 @@ func (receiver *controller) handleCallStatus(signal *dbus.Signal) {
 		}
 	}
 
-	log.Printf(
-		"call status: path=%s status=%d action=%s was_incoming=%t incoming_calls=%d paths=%s",
-		signal.Path,
-		status,
-		action,
-		wasIncoming,
-		len(receiver.incomingCalls),
-		receiver.incomingCallPaths(),
+	receiver.logger.Info(
+		"call status",
+		slog.String("path", string(signal.Path)),
+		slog.Int("status", status),
+		slog.String("action", action),
+		slog.Bool("was_incoming", wasIncoming),
+		slog.Int("incoming_calls", len(receiver.incomingCalls)),
+		slog.String("paths", receiver.incomingCallPaths()),
 	)
 }
 
@@ -121,13 +126,13 @@ func (receiver *controller) isFavoriteCall(path dbus.ObjectPath) bool {
 
 	lineID, err := receiver.connection.Object("org.nemomobile.voicecall", path).GetProperty(voiceCallInterface + ".lineId")
 	if err != nil {
-		log.Printf("cannot get incoming caller number: path=%s: %v", path, err)
+		receiver.logger.Error("cannot get incoming caller number", slog.String("path", string(path)), slog.String("error", err.Error()))
 		return false
 	}
 
 	number, ok := lineID.Value().(string)
 	if !ok || number == "" {
-		log.Printf("incoming caller number is unavailable: path=%s", path)
+		receiver.logger.Warn("incoming caller number is unavailable", slog.String("path", string(path)))
 		return false
 	}
 
@@ -136,11 +141,11 @@ func (receiver *controller) isFavoriteCall(path dbus.ObjectPath) bool {
 
 	favorite, err := contacts.NewClient(receiver.connection).IsFavorite(ctx, number)
 	if err != nil {
-		log.Printf("favorite caller lookup failed: path=%s: %v", path, err)
+		receiver.logger.Error("favorite caller lookup failed", slog.String("path", string(path)), slog.String("error", err.Error()))
 		return false
 	}
 
-	log.Printf("incoming caller favorite lookup: path=%s favorite=%t", path, favorite)
+	receiver.logger.Info("incoming caller favorite lookup", slog.String("path", string(path)), slog.Bool("favorite", favorite))
 	return favorite
 }
 

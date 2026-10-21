@@ -12,7 +12,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -20,14 +21,19 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func start(controller led.Controller, sessionBus, systemBus *dbus.Conn, cfg *config.Config) (cleanup func() error, err error) {
-	externalController := appdbus.NewExternalController(controller)
+func start(
+	controller led.Controller,
+	sessionBus, systemBus *dbus.Conn,
+	cfg *config.Config,
+	logger *config.Logger,
+) (cleanup func() error, err error) {
+	externalController := appdbus.NewExternalController(controller, logger)
 	notificationMatcher := notifications.DefaultMatcher(cfg)
-	mainController := appdbus.NewControllerWithConfig(sessionBus, systemBus, controller, cfg, notificationMatcher)
+	mainController := appdbus.NewControllerWithConfig(sessionBus, systemBus, controller, cfg, notificationMatcher, logger)
 	knockEvents := &knockEventController{controller: mainController, external: externalController}
 	knockController := knock.New(cfg, knockEvents, func(err error) {
 		externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
-	})
+	}, logger)
 	mainController.SetKnockClearHandler(knockController.ClearActive)
 	if cfg.Knock.Enabled {
 		externalController.UpdateKnockStatus(appdbus.KnockStarting, "")
@@ -61,7 +67,7 @@ func start(controller led.Controller, sessionBus, systemBus *dbus.Conn, cfg *con
 
 	if cfg.Knock.Enabled {
 		if err := knockController.StartListening(); err != nil {
-			log.Printf("failed to start knock listener: %v", err)
+			logger.Error("failed to start knock listener", slog.String("error", err.Error()))
 			externalController.UpdateKnockStatus(appdbus.KnockFailed, err.Error())
 		} else {
 			externalController.KnockListening()
@@ -91,24 +97,31 @@ func main() {
 	)
 	defer stop()
 
+	logger := config.NewLogger()
+	defer logger.Close()
+
 	cfg, err := config.New()
 	if err != nil {
-		log.Fatal(fmt.Errorf("failed to load configuration: %w", err))
+		logger.Error("failed to load configuration", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	migrator := migrations.GetMigrator()
 	if err = migrator.Migrate(cfg); err != nil {
-		log.Fatal(fmt.Errorf("failed to migrate: %w", err))
+		logger.Error("failed to migrate", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 
 	sessionBus, err := dbus.ConnectSessionBus()
 	if err != nil {
-		log.Fatalf("failed to connect to session bus: %v", err)
+		logger.Error("failed to connect session bus", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	defer sessionBus.Close()
 	systemBus, err := dbus.ConnectSystemBus()
 	if err != nil {
-		log.Fatalf("failed to connect to system bus: %v", err)
+		logger.Error("failed to connect system bus", slog.String("error", err.Error()))
+		os.Exit(1)
 	}
 	defer systemBus.Close()
 
@@ -128,14 +141,14 @@ func main() {
 	cleanupBase := func(shutdowner func(ledController led.Controller) error) {
 		if stopServices != nil {
 			if err := stopServices(); err != nil {
-				log.Printf("failed to stop services: %v", err)
+				logger.Warn("failed to stop services", slog.String("error", err.Error()))
 			}
 			stopServices = nil
 		}
 
 		if ledController != nil {
 			if err := shutdowner(ledController); err != nil {
-				log.Printf("failed to release LED controller: %v", err)
+				logger.Warn("failed to release LED controller:", slog.String("error", err.Error()))
 			}
 			ledController = nil
 		}
@@ -154,7 +167,7 @@ func main() {
 	var available bool
 	var retry <-chan time.Time
 
-	log.Println("LED daemon started")
+	logger.Info("LED daemon started")
 
 	for {
 		select {
@@ -164,7 +177,7 @@ func main() {
 			if !available {
 				retry = nil
 				cleanup()
-				log.Println("Original Inari Blue behavior enabled")
+				logger.Info("Original Inari Blue behavior enabled")
 
 				continue
 			}
@@ -177,29 +190,29 @@ func main() {
 
 			device, err := devices.NewInariBlueDevice(systemBus)
 			if err != nil {
-				log.Printf("failed to create Inari Blue device: %v", err)
+				logger.Error("failed to create Inari Blue device", slog.String("error", err.Error()))
 				continue
 			}
 
 			ledController, err = led.New(device)
 			if err != nil {
-				log.Printf("failed to create LED controller: %v", err)
+				logger.Error("failed to create LED controller", slog.String("error", err.Error()))
 				_ = device.Release()
 				continue
 			}
 
-			stopServices, err = start(ledController, sessionBus, systemBus, cfg)
+			stopServices, err = start(ledController, sessionBus, systemBus, cfg, logger)
 			if err != nil {
-				log.Printf("failed to start services: %v", err)
+				logger.Error("failed to start services", slog.String("error", err.Error()))
 				cleanup()
 				continue
 			}
 			controllerDone = ledController.Done()
 
-			log.Println("LED controller acquired")
+			logger.Info("LED controller acquired")
 
 		case <-controllerDone:
-			log.Println("LED controller lost")
+			logger.Warn("LED controller lost")
 			cleanup()
 
 			if available {
@@ -208,12 +221,12 @@ func main() {
 
 		case err := <-watcherErrors:
 			if err != nil && !errors.Is(err, context.Canceled) {
-				log.Printf("availability watcher failed: %v", err)
+				logger.Error("availability watcher failed", slog.String("error", err.Error()))
 			}
 			return
 
 		case <-ctx.Done():
-			log.Println("LED daemon stopping")
+			logger.Info("LED daemon stopping")
 			return
 		case <-retry:
 			retry = nil
@@ -224,14 +237,14 @@ func main() {
 
 			device, err := devices.NewInariBlueDevice(systemBus)
 			if err != nil {
-				log.Printf("failed to create Inari Blue device: %v", err)
+				logger.Error("failed to create Inari Blue device", slog.String("error", err.Error()))
 				retry = time.After(5 * time.Second)
 				continue
 			}
 
 			newController, err := led.New(device)
 			if err != nil {
-				log.Printf("failed to create LED controller: %v", err)
+				logger.Error("failed to create LED controller", slog.String("error", err.Error()))
 				_ = device.Release()
 				retry = time.After(5 * time.Second)
 				continue
@@ -239,16 +252,16 @@ func main() {
 
 			ledController = newController
 
-			stopServices, err = start(ledController, sessionBus, systemBus, cfg)
+			stopServices, err = start(ledController, sessionBus, systemBus, cfg, logger)
 			if err != nil {
-				log.Printf("failed to start services: %v", err)
+				logger.Error("failed to start services", slog.String("error", err.Error()))
 				cleanup()
 				retry = time.After(5 * time.Second)
 				continue
 			}
 
 			controllerDone = ledController.Done()
-			log.Println("LED controller acquired")
+			logger.Info("LED controller acquired")
 		}
 	}
 }
