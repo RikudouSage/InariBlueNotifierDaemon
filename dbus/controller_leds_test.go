@@ -34,7 +34,7 @@ func (receiver *recordingLEDController) Done() <-chan struct{} { return nil }
 func TestKnockEventCoordinatesCallsAndNotifications(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         patterns.SlowBlink,
@@ -86,7 +86,7 @@ func TestKnockEventCoordinatesCallsAndNotifications(t *testing.T) {
 func TestKnockEndingDoesNotStopActiveCall(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern: patterns.SlowBlink,
@@ -109,7 +109,7 @@ func TestKnockEndingDoesNotStopActiveCall(t *testing.T) {
 func TestKnockEndingRestoresOffPattern(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config:        &config.Config{Knock: config.Knock{Pattern: patterns.RapidBlink}, OffPattern: patterns.Off},
 		now:           time.Now,
@@ -130,7 +130,7 @@ func TestUpdateLEDAppliesCallPattern(t *testing.T) {
 	favourite := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         normal,
@@ -155,7 +155,7 @@ func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 	favourite := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         normal,
@@ -180,7 +180,7 @@ func TestUpdateLEDUsesCallPatternForFavouriteCallWhenFavoriteCallPatternIsUnset(
 	call := patterns.SlowBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern: call,
@@ -203,7 +203,7 @@ func TestUpdateLEDAppliesNotificationPatternWhileNotificationIsActive(t *testing
 	notification := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -227,7 +227,7 @@ func TestUpdateLEDAppliesNotificationPatternForCustomMatch(t *testing.T) {
 	notification := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -253,7 +253,7 @@ func TestUpdateLEDAppliesConfiguredCustomPattern(t *testing.T) {
 	custom := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: patterns.SlowBlink,
@@ -282,7 +282,7 @@ func TestUpdateLEDUsesCustomPatternBeforeBuiltInNotificationPattern(t *testing.T
 	custom := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: patterns.SlowBlink,
@@ -315,7 +315,7 @@ func TestUpdateLEDAppliesSMSPatternWhenGenericNotificationsAreDisabled(t *testin
 	sms := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			SMSPattern: &sms,
@@ -340,7 +340,7 @@ func TestUpdateLEDUsesNotificationPatternForSMSWhenSMSPatternIsUnset(t *testing.
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -365,7 +365,7 @@ func TestUpdateLEDAppliesEmailPatternWhenGenericNotificationsAreDisabled(t *test
 	email := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			EmailPattern: &email,
@@ -390,7 +390,7 @@ func TestUpdateLEDUsesNotificationPatternForEmailWhenEmailPatternIsUnset(t *test
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -415,7 +415,7 @@ func TestUpdateLEDAppliesSignalPatternWhenGenericNotificationsAreDisabled(t *tes
 	signal := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			SignalPattern: &signal,
@@ -440,7 +440,7 @@ func TestUpdateLEDUsesNotificationPatternForSignalWhenSignalPatternIsUnset(t *te
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -465,7 +465,7 @@ func TestUpdateLEDAppliesMatrixPatternWhenGenericNotificationsAreDisabled(t *tes
 	matrix := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			MatrixPattern: &matrix,
@@ -490,7 +490,7 @@ func TestUpdateLEDUsesGenericNotificationsWhenSMSIsDisabled(t *testing.T) {
 	notification := patterns.SlowBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: notification,
@@ -516,7 +516,7 @@ func TestUpdateLEDPrioritizesSMSOverGenericNotifications(t *testing.T) {
 	sms := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			NotificationPattern: patterns.SlowBlink,
@@ -541,7 +541,7 @@ func TestUpdateLEDPrioritizesSMSOverGenericNotifications(t *testing.T) {
 func TestUpdateLEDAppliesOffPatternWhenNotificationEventIsMissing(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:              config.NewLoggerWithoutFile(),
+		logger:              config.NewNilLogger(),
 		ledController:       ledController,
 		config:              &config.Config{NotificationPattern: patterns.RapidBlink, OffPattern: patterns.Off},
 		activeNotifications: trackedNotifications(1),
@@ -561,7 +561,7 @@ func TestUpdateLEDKeepsCallPatternOverNotificationPattern(t *testing.T) {
 	notification := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         call,
@@ -585,7 +585,7 @@ func TestUpdateLEDSkipsDisabledCallForEnabledNotification(t *testing.T) {
 	notification := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         call,
@@ -613,7 +613,7 @@ func TestUpdateLEDSkipsDisabledFavouritePattern(t *testing.T) {
 	favourite := patterns.RapidBlink
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			CallPattern:         call,
@@ -638,7 +638,7 @@ func TestUpdateLEDSkipsDisabledFavouritePattern(t *testing.T) {
 func TestUpdateLEDAppliesOffPatternWhenAllActiveEventsAreDisabled(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config: &config.Config{
 			OffPattern: patterns.Off,
@@ -664,7 +664,7 @@ func TestUpdateLEDAppliesOffPatternWhenAllActiveEventsAreDisabled(t *testing.T) 
 func TestUpdateLEDAppliesOffPatternWhenThereAreNoEvents(t *testing.T) {
 	ledController := &recordingLEDController{}
 	receiver := &controller{
-		logger:        config.NewLoggerWithoutFile(),
+		logger:        config.NewNilLogger(),
 		ledController: ledController,
 		config:        &config.Config{OffPattern: patterns.Off},
 		now:           time.Now,

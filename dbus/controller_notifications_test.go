@@ -11,7 +11,7 @@ import (
 
 func TestNotificationLifecycleTracksUntilClosed(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -67,7 +67,7 @@ func TestCustomNotificationTracksMatchingFilterName(t *testing.T) {
 		},
 	}}
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(configuration),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -98,7 +98,7 @@ func TestCustomNotificationTracksMatchingFilterName(t *testing.T) {
 
 func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
 	receiver := &controller{
-		logger:              config.NewLoggerWithoutFile(),
+		logger:              config.NewNilLogger(),
 		notificationMatcher: notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications: trackedNotifications(1, 2),
 	}
@@ -118,7 +118,7 @@ func TestNotificationCloseKeepsBlinkingForOtherNotification(t *testing.T) {
 
 func TestSMSNotificationTracksSMSFilter(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -149,7 +149,7 @@ func TestSMSNotificationTracksSMSFilter(t *testing.T) {
 
 func TestEmailNotificationTracksEmailFilter(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -180,7 +180,7 @@ func TestEmailNotificationTracksEmailFilter(t *testing.T) {
 
 func TestSignalNotificationTracksSignalFilter(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -212,7 +212,7 @@ func TestSignalNotificationTracksSignalFilter(t *testing.T) {
 
 func TestMatrixNotificationTracksMatrixFilter(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
@@ -243,7 +243,7 @@ func TestMatrixNotificationTracksMatrixFilter(t *testing.T) {
 
 func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	receiver := &controller{
-		logger:                   config.NewLoggerWithoutFile(),
+		logger:                   config.NewNilLogger(),
 		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),

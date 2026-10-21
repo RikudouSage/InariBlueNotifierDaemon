@@ -49,6 +49,12 @@ func NewLoggerWithoutFile() *Logger {
 	}
 }
 
+func NewNilLogger() *Logger {
+	return &Logger{
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
 func NewLogger() *Logger {
 	file, err := openLogFile()
 	var writer io.Writer
