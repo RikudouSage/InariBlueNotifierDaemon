@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -52,6 +51,8 @@ type controller struct {
 
 	activeNotifications      map[uint32]trackedNotification
 	pendingNotificationCalls map[uint32]trackedNotification
+
+	logger *config.Logger
 }
 
 // SetKnockClearHandler sets the action used to clear the current knock.
@@ -83,6 +84,7 @@ func NewControllerWithConfig(
 	ledController led.Controller,
 	configuration *config.Config,
 	matcher *notifications.Matcher,
+	logger *config.Logger,
 ) Controller {
 	if configuration == nil {
 		configuration = &config.Config{
@@ -103,6 +105,7 @@ func NewControllerWithConfig(
 		activeNotifications:      make(map[uint32]trackedNotification),
 		pendingNotificationCalls: make(map[uint32]trackedNotification),
 		now:                      time.Now,
+		logger:                   logger,
 	}
 }
 
@@ -131,7 +134,7 @@ func (receiver *controller) Start() error {
 		receiver.connection.RemoveSignal(signals)
 		return fmt.Errorf("subscribe to voice call signals: %w", err)
 	}
-	log.Printf("subscribed to voice call status changes")
+	receiver.logger.Info("subscribed to voice call status changes")
 
 	var unlockSignals chan *dbus.Signal
 	var unlockMatch []dbus.MatchOption
@@ -207,7 +210,7 @@ func (receiver *controller) Stop() error {
 
 	cancel()
 	<-done
-	log.Printf("stopped voice call watcher")
+	receiver.logger.Info("stopped voice call watcher")
 
 	receiver.cancel = nil
 	receiver.done = nil

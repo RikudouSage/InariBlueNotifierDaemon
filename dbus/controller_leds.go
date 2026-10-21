@@ -3,7 +3,7 @@ package dbus
 import (
 	"InariBlueNotifier/config"
 	"InariBlueNotifier/patterns"
-	"log"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -45,7 +45,7 @@ func (receiver *controller) updateLED() error {
 	switch {
 	case receiver.knockActive:
 		pattern := receiver.config.Knock.Pattern
-		log.Printf("LED update: requested_pattern=%s reason=active knock", pattern.Name)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "active knock"))
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
@@ -57,47 +57,35 @@ func (receiver *controller) updateLED() error {
 			pattern = *receiver.config.FavoriteCallPattern
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=incoming favourite call incoming_calls=%d",
-			pattern.Name,
-			len(receiver.incomingCalls),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "incoming favourite call"), slog.Int("incoming_calls", len(receiver.incomingCalls)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && eventEnabled(config.EventCall) && len(receiver.incomingCalls) > 0:
 		pattern := receiver.config.CallPattern
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=incoming call incoming_calls=%d",
-			pattern.Name,
-			len(receiver.incomingCalls),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "incoming call"), slog.Int("incoming_calls", len(receiver.incomingCalls)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && hasCustomPattern:
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active custom notification filter notifications=%d",
-			customPattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", customPattern.Name), slog.String("reason", "active custom notification filter"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(customPattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", customPattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", customPattern.Name))
 		return nil
 
 	case timeInRange && eventEnabled(config.EventSMS) && receiver.hasActiveNotificationFilter(string(config.EventSMS)):
@@ -106,17 +94,13 @@ func (receiver *controller) updateLED() error {
 			pattern = *receiver.config.SMSPattern
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active SMS notification notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "active SMS notification"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && eventEnabled(config.EventEmail) && receiver.hasActiveNotificationFilter(string(config.EventEmail)):
@@ -125,17 +109,13 @@ func (receiver *controller) updateLED() error {
 			pattern = *receiver.config.EmailPattern
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active email notification notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "active email notification"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && eventEnabled(config.EventSignal) && receiver.hasActiveNotificationFilter(string(config.EventSignal)):
@@ -144,17 +124,13 @@ func (receiver *controller) updateLED() error {
 			pattern = *receiver.config.SignalPattern
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active Signal notification notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "active Signal notification"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && eventEnabled(config.EventMatrix) && receiver.hasActiveNotificationFilter(string(config.EventMatrix)):
@@ -163,17 +139,13 @@ func (receiver *controller) updateLED() error {
 			pattern = *receiver.config.MatrixPattern
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=active Matrix notification notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "active Matrix notification"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange && hasCustomNotification,
@@ -185,28 +157,19 @@ func (receiver *controller) updateLED() error {
 			reason = "active custom-matched notification"
 		}
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=%s notifications=%d",
-			pattern.Name,
-			reason,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", reason), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: pattern=%s", pattern.Name)
+		receiver.logger.Info("LED update applied", slog.String("pattern", pattern.Name))
 		return nil
 
 	case timeInRange:
 		pattern := receiver.config.OffPattern
 
-		log.Printf(
-			"LED update: requested_pattern=%s reason=no incoming calls or active notifications notifications=%d",
-			pattern.Name,
-			len(receiver.activeNotifications),
-		)
+		receiver.logger.Info("LED update", slog.String("requested_pattern", pattern.Name), slog.String("reason", "no incoming calls or active notifications"), slog.Int("notifications", len(receiver.activeNotifications)))
 
 		if err := receiver.ledController.PlayPattern(pattern); err != nil {
 			return err
@@ -214,12 +177,12 @@ func (receiver *controller) updateLED() error {
 
 		return nil
 	default:
-		log.Printf("LED update: requested_stop reason=outside of allowed hours")
+		receiver.logger.Info("LED update", slog.String("requested_stop", "outside of allowed hours"))
 		if err := receiver.ledController.Stop(); err != nil {
 			return err
 		}
 
-		log.Printf("LED update applied: stopped")
+		receiver.logger.Info("LED update applied", slog.String("state", "stopped"))
 		return nil
 	}
 }

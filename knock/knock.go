@@ -5,7 +5,7 @@ import (
 	"InariBlueNotifier/config"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strconv"
@@ -31,6 +31,7 @@ type knock struct {
 	config     *config.Config
 	controller EventController
 	onFailure  func(error)
+	logger     *config.Logger
 
 	mu        sync.Mutex
 	listeners []net.Listener
@@ -40,11 +41,12 @@ type knock struct {
 	workers   sync.WaitGroup
 }
 
-func New(config *config.Config, controller EventController, onFailure func(err error)) Knock {
+func New(config *config.Config, controller EventController, onFailure func(err error), logger *config.Logger) Knock {
 	return &knock{
 		config:     config,
 		controller: controller,
 		onFailure:  onFailure,
+		logger:     logger,
 	}
 }
 
@@ -269,7 +271,7 @@ func (receiver *knock) listenUDP(done <-chan struct{}, events chan<- struct{}, p
 }
 
 func (receiver *knock) listenerFailed(err error) {
-	log.Printf("knock %v", err)
+	receiver.logger.Error("knock listener failed", slog.String("error", err.Error()))
 	if receiver.onFailure != nil {
 		receiver.onFailure(err)
 	}
@@ -285,7 +287,7 @@ func (receiver *knock) handleKnocks(done <-chan struct{}, events, clear <-chan s
 		}
 		if active {
 			if err := receiver.controller.SetKnockActive(false); err != nil {
-				log.Printf("failed to clear knock event: %v", err)
+				receiver.logger.Error("failed to clear knock event", slog.String("error", err.Error()))
 			}
 		}
 	}()
@@ -302,7 +304,7 @@ func (receiver *knock) handleKnocks(done <-chan struct{}, events, clear <-chan s
 			if !active {
 				active = true
 				if err := receiver.controller.SetKnockActive(true); err != nil {
-					log.Printf("failed to activate knock event: %v", err)
+					receiver.logger.Error("failed to activate knock event", slog.String("error", err.Error()))
 				}
 			}
 			if settings.Timeout > 0 {
@@ -317,7 +319,7 @@ func (receiver *knock) handleKnocks(done <-chan struct{}, events, clear <-chan s
 			timeout = nil
 			active = false
 			if err := receiver.controller.SetKnockActive(false); err != nil {
-				log.Printf("failed to clear knock event: %v", err)
+				receiver.logger.Error("failed to clear knock event", slog.String("error", err.Error()))
 			}
 		case <-clear:
 			if !active {
@@ -329,7 +331,7 @@ func (receiver *knock) handleKnocks(done <-chan struct{}, events, clear <-chan s
 			timeout = nil
 			active = false
 			if err := receiver.controller.SetKnockActive(false); err != nil {
-				log.Printf("failed to clear knock event: %v", err)
+				receiver.logger.Error("failed to clear knock event", slog.String("error", err.Error()))
 			}
 		}
 	}

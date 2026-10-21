@@ -19,6 +19,11 @@ import (
 )
 
 const (
+	guiVendor = "dev.rikudou"
+	guiName   = "inari-blue-notifier"
+)
+
+const (
 	patternKeyCall         = "call"
 	patternKeyFavoriteCall = "favoriteCall"
 	patternKeyNotification = "notification"
@@ -158,7 +163,7 @@ func New() (*Config, error) {
 		}
 		cfgDir = filepath.Join(cfgDir, ".config")
 	}
-	cfgDir = filepath.Join(cfgDir, "dev.rikudou", "inari-blue-notifier")
+	cfgDir = filepath.Join(cfgDir, guiVendor, guiName)
 	cfgFilePath := filepath.Join(cfgDir, "config_v3.ini")
 	cfgFile, err := os.Open(cfgFilePath)
 	if err != nil && !os.IsNotExist(err) {

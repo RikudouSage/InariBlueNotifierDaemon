@@ -3,7 +3,7 @@ package dbus
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"InariBlueNotifier/notifications"
 
@@ -46,7 +46,7 @@ func (receiver *controller) startNotificationMonitor() (chan *dbus.Message, *dbu
 
 	messages := make(chan *dbus.Message, 64)
 	connection.Eavesdrop(messages)
-	log.Printf("subscribed to notification lifecycle events")
+	receiver.logger.Info("subscribed to notification lifecycle events")
 
 	return messages, connection, nil
 }
@@ -66,7 +66,7 @@ func (receiver *controller) watchNotifications(
 
 		case message, ok := <-messages:
 			if !ok {
-				log.Printf("notification monitor channel closed")
+				receiver.logger.Warn("notification monitor channel closed")
 				return
 			}
 			if message == nil {
@@ -77,7 +77,7 @@ func (receiver *controller) watchNotifications(
 			changed := receiver.handleNotificationMessage(message)
 			if changed {
 				if err := receiver.updateLED(); err != nil {
-					log.Printf("LED update failed after notification event: active_notifications=%d: %v", len(receiver.activeNotifications), err)
+					receiver.logger.Error("LED update failed after notification event", slog.Int("active_notifications", len(receiver.activeNotifications)), slog.String("error", err.Error()))
 				}
 			}
 
@@ -98,11 +98,11 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 		}
 		notification, ok := notifications.FromNotify(message.Body)
 		if !ok {
-			log.Printf("ignored notification with invalid Notify body: serial=%d body=%#v", message.Serial(), message.Body)
+			receiver.logger.Warn("ignored notification with invalid Notify body", slog.Uint64("serial", uint64(message.Serial())), slog.Any("body", message.Body))
 			return false
 		}
 		if !notification.IsUserRemovable() {
-			log.Printf("ignored non-removable notification: serial=%d", message.Serial())
+			receiver.logger.Debug("ignored non-removable notification", slog.Uint64("serial", uint64(message.Serial())))
 			return false
 		}
 
@@ -112,7 +112,7 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 			customFilters: customFilters,
 			customMatched: len(customFilters) > 0,
 		}
-		log.Printf("notification notify: serial=%d pending=%d", message.Serial(), len(receiver.pendingNotificationCalls))
+		receiver.logger.Info("notification notify", slog.Uint64("serial", uint64(message.Serial())), slog.Int("pending", len(receiver.pendingNotificationCalls)))
 
 		return false
 
@@ -130,13 +130,13 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 
 		id, ok := notificationID(message.Body)
 		if !ok {
-			log.Printf("ignored notification reply with invalid ID: reply_serial=%d body=%#v", replySerial, message.Body)
+			receiver.logger.Warn("ignored notification reply with invalid ID", slog.Uint64("reply_serial", uint64(replySerial)), slog.Any("body", message.Body))
 			return false
 		}
 
 		_, alreadyActive := receiver.activeNotifications[id]
 		receiver.activeNotifications[id] = pending
-		log.Printf("notification active: id=%d reply_serial=%d active_notifications=%d", id, replySerial, len(receiver.activeNotifications))
+		receiver.logger.Info("notification active", slog.Uint64("id", uint64(id)), slog.Uint64("reply_serial", uint64(replySerial)), slog.Int("active_notifications", len(receiver.activeNotifications)))
 
 		return !alreadyActive
 
@@ -147,7 +147,7 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 
 		id, ok := notificationID(message.Body)
 		if !ok {
-			log.Printf("ignored notification close with invalid ID: body=%#v", message.Body)
+			receiver.logger.Warn("ignored notification close with invalid ID", slog.Any("body", message.Body))
 			return false
 		}
 
@@ -155,7 +155,7 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 			return false
 		}
 		delete(receiver.activeNotifications, id)
-		log.Printf("notification closed: id=%d active_notifications=%d", id, len(receiver.activeNotifications))
+		receiver.logger.Info("notification closed", slog.Uint64("id", uint64(id)), slog.Int("active_notifications", len(receiver.activeNotifications)))
 
 		return true
 	}

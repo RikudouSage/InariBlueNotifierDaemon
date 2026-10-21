@@ -3,11 +3,12 @@
 package contacts
 
 import (
+	"InariBlueNotifier/config"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,10 +106,12 @@ type Server struct {
 	connection *dbus.Conn
 	store      *Store
 	closeOnce  sync.Once
+
+	logger *config.Logger
 }
 
 // NewServer connects to the session bus and registers the helper service.
-func NewServer(store *Store) (*Server, error) {
+func NewServer(store *Store, logger *config.Logger) (*Server, error) {
 	if store == nil {
 		return nil, errors.New("contacts store is nil")
 	}
@@ -118,7 +121,7 @@ func NewServer(store *Store) (*Server, error) {
 		return nil, fmt.Errorf("connect to session bus: %w", err)
 	}
 
-	server := &Server{connection: connection, store: store}
+	server := &Server{connection: connection, store: store, logger: logger}
 	if err := connection.Export(server, objectPath, interfaceName); err != nil {
 		_ = connection.Close()
 		return nil, fmt.Errorf("export contacts service: %w", err)
@@ -149,13 +152,13 @@ func (receiver *Server) Close() error {
 // supplied by the bus and cannot be forged by the client.
 func (receiver *Server) IsFavorite(sender dbus.Sender, number string) (bool, *dbus.Error) {
 	if err := receiver.authorize(sender); err != nil {
-		log.Printf("rejected contacts lookup: sender=%q: %v", sender, err)
+		receiver.logger.Warn("rejected contacts lookup", slog.String("sender", string(sender)), slog.String("error", err.Error()))
 		return false, dbus.MakeFailedError(errors.New("caller is not the notifier service"))
 	}
 
 	favourite, err := receiver.store.IsFavorite(context.Background(), number)
 	if err != nil {
-		log.Printf("contacts lookup failed: %v", err)
+		receiver.logger.Error("contacts lookup failed", slog.String("error", err.Error()))
 		return false, dbus.MakeFailedError(errors.New("contacts lookup failed"))
 	}
 	return favourite, nil
