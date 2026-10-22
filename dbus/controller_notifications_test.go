@@ -280,6 +280,36 @@ func TestNonRemovableNotificationIsIgnored(t *testing.T) {
 	}
 }
 
+func TestNotificationErrorReplyClearsPendingCall(t *testing.T) {
+	receiver := &controller{
+		logger:                   config.NewNilLogger(),
+		notificationMatcher:      notifications.DefaultMatcher(&config.Config{}),
+		activeNotifications:      make(map[uint32]trackedNotification),
+		pendingNotificationCalls: make(map[uint32]trackedNotification),
+	}
+
+	receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeMethodCall,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldInterface: dbus.MakeVariant(notificationsInterface),
+			dbus.FieldMember:    dbus.MakeVariant(notificationNotify),
+		},
+		Body: validNotifyBody(nil),
+	})
+
+	if changed := receiver.handleNotificationMessage(&dbus.Message{
+		Type: dbus.TypeError,
+		Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(uint32(0)),
+		},
+	}); changed {
+		t.Fatal("notification error reply changed active notification state")
+	}
+	if len(receiver.pendingNotificationCalls) != 0 {
+		t.Fatalf("pending notifications = %v, want none", receiver.pendingNotificationCalls)
+	}
+}
+
 func validNotifyBody(hints map[string]dbus.Variant) []any {
 	if hints == nil {
 		hints = make(map[string]dbus.Variant)
