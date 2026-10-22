@@ -29,6 +29,7 @@ const (
 
 type ExternalController struct {
 	ledController led.Controller
+	cfg           *config.Config
 
 	statusMutex sync.Mutex
 	statusConn  *dbus.Conn
@@ -39,11 +40,12 @@ type ExternalController struct {
 	logger *config.Logger
 }
 
-func NewExternalController(ledController led.Controller, logger *config.Logger) *ExternalController {
+func NewExternalController(ledController led.Controller, logger *config.Logger, cfg *config.Config) *ExternalController {
 	return &ExternalController{
 		ledController: ledController,
 		knockStatus:   KnockDisabled,
 		logger:        logger,
+		cfg:           cfg,
 	}
 }
 
@@ -55,6 +57,37 @@ func (receiver *ExternalController) GetKnockStatus() (status string, active bool
 	defer receiver.statusMutex.Unlock()
 
 	return receiver.knockStatus, receiver.knockActive, receiver.knockError, nil
+}
+
+// GetPrivacySwitchEnabled reports whether LEDs should be disabled while
+// Sailfish OS privacy mode is active.
+func (receiver *ExternalController) GetPrivacySwitchEnabled() (enabled bool, dbusErr *dbus.Error) {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	return receiver.cfg != nil && receiver.cfg.Constraints.DisableOnPrivacySwitch, nil
+}
+
+// SetPrivacySwitchEnabled updates and persists the privacy-switch setting.
+// Successful changes are announced with PrivacySwitchEnabledChanged.
+func (receiver *ExternalController) SetPrivacySwitchEnabled(enabled bool) *dbus.Error {
+	receiver.statusMutex.Lock()
+	defer receiver.statusMutex.Unlock()
+
+	if receiver.cfg == nil {
+		return dbus.MakeFailedError(errors.New("privacy-switch configuration is unavailable"))
+	}
+	if receiver.cfg.Constraints.DisableOnPrivacySwitch == enabled {
+		return nil
+	}
+
+	receiver.cfg.Constraints.DisableOnPrivacySwitch = enabled
+	if err := receiver.cfg.Save(); err != nil {
+		return dbus.MakeFailedError(fmt.Errorf("save privacy-switch configuration: %w", err))
+	}
+	receiver.emitPrivacySwitchEnabled(enabled)
+
+	return nil
 }
 
 // UpdateKnockStatus publishes a listener state change to D-Bus clients.
@@ -101,6 +134,15 @@ func (receiver *ExternalController) emitKnockStatus() {
 	if receiver.statusConn != nil {
 		if err := receiver.statusConn.Emit(externalDBusObject, externalDBusInterface+".KnockStatusChanged", receiver.knockStatus, receiver.knockActive, receiver.knockError); err != nil {
 			receiver.logger.Error("failed to emit knock status", slog.String("error", err.Error()))
+		}
+	}
+}
+
+// emitPrivacySwitchEnabled must be called with statusMutex held.
+func (receiver *ExternalController) emitPrivacySwitchEnabled(enabled bool) {
+	if receiver.statusConn != nil {
+		if err := receiver.statusConn.Emit(externalDBusObject, externalDBusInterface+".PrivacySwitchEnabledChanged", enabled); err != nil {
+			receiver.logger.Error("failed to emit privacy-switch setting", slog.String("error", err.Error()))
 		}
 	}
 }

@@ -27,7 +27,7 @@ func start(
 	cfg *config.Config,
 	logger *config.Logger,
 ) (cleanup func() error, err error) {
-	externalController := appdbus.NewExternalController(controller, logger)
+	externalController := appdbus.NewExternalController(controller, logger, cfg)
 	notificationMatcher := notifications.DefaultMatcher(cfg)
 	mainController := appdbus.NewControllerWithConfig(sessionBus, systemBus, controller, cfg, notificationMatcher, logger)
 	knockEvents := &knockEventController{controller: mainController, external: externalController}
