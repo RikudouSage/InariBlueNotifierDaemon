@@ -41,8 +41,9 @@ const (
 	sectionInternal            = "internal"
 	sectionKnock               = "knock"
 
-	constraintNameStartTime = "startTime"
-	constraintNameEndTime   = "endTime"
+	constraintNameStartTime     = "startTime"
+	constraintNameEndTime       = "endTime"
+	constraintNamePrivacySwitch = "privacySwitch"
 
 	internalKeyMigratedVersion = "migratedVersion"
 
@@ -68,8 +69,9 @@ const (
 )
 
 type Constraints struct {
-	StartTime dto.TimeOnly
-	EndTime   dto.TimeOnly
+	StartTime              dto.TimeOnly
+	EndTime                dto.TimeOnly
+	DisableOnPrivacySwitch bool
 }
 
 type Knock struct {
@@ -332,15 +334,25 @@ func New() (*Config, error) {
 	}
 
 	constraints := cfgRaw.Section(sectionConstraints)
-	timeConstraintsMap := map[string]*dto.TimeOnly{
-		constraintNameStartTime: &instance.Constraints.StartTime,
-		constraintNameEndTime:   &instance.Constraints.EndTime,
+	constraintsMap := map[string]any{
+		constraintNameStartTime:     &instance.Constraints.StartTime,
+		constraintNameEndTime:       &instance.Constraints.EndTime,
+		constraintNamePrivacySwitch: &instance.Constraints.DisableOnPrivacySwitch,
 	}
-	for key, ref := range timeConstraintsMap {
-		if val := constraints.Key(key).String(); val != "" {
-			*ref = dto.NewTimeOnly(val)
-		} else {
+	for key, ref := range constraintsMap {
+		rawVal := constraints.Key(key).String()
+		if rawVal == "" {
 			changedConfig = true
+			continue
+		}
+		switch constraintsMap[key].(type) {
+		case *bool:
+			*ref.(*bool), err = strconv.ParseBool(rawVal)
+			if err != nil {
+				changedConfig = true
+			}
+		case *dto.TimeOnly:
+			*ref.(*dto.TimeOnly) = dto.NewTimeOnly(rawVal)
 		}
 	}
 
@@ -502,12 +514,21 @@ func (receiver *Config) Save() error {
 		cfgRaw.Section(sectionActivePatterns).Key(name).SetValue(base64.RawStdEncoding.EncodeToString(patternJSON))
 	}
 
-	timeConstraints := map[string]dto.TimeOnly{
-		constraintNameStartTime: receiver.Constraints.StartTime,
-		constraintNameEndTime:   receiver.Constraints.EndTime,
+	timeConstraints := map[string]any{
+		constraintNameStartTime:     receiver.Constraints.StartTime,
+		constraintNameEndTime:       receiver.Constraints.EndTime,
+		constraintNamePrivacySwitch: receiver.Constraints.DisableOnPrivacySwitch,
 	}
 	for key, value := range timeConstraints {
-		cfgRaw.Section(sectionConstraints).Key(key).SetValue(value.String())
+		var strVal string
+		switch value.(type) {
+		case dto.TimeOnly:
+			strVal = value.(dto.TimeOnly).String()
+		case bool:
+			strVal = strconv.FormatBool(value.(bool))
+		}
+
+		cfgRaw.Section(sectionConstraints).Key(key).SetValue(strVal)
 	}
 
 	knock := cfgRaw.Section(sectionKnock)
