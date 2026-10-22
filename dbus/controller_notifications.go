@@ -34,7 +34,8 @@ func (receiver *controller) startNotificationMonitor() (chan *dbus.Message, *dbu
 
 	rules := []string{
 		"type='method_call',interface='org.freedesktop.Notifications',member='Notify',eavesdrop='true'",
-		"type='method_return',sender='org.freedesktop.Notifications',eavesdrop='true'",
+		"type='method_return',eavesdrop='true'",
+		"type='error',eavesdrop='true'",
 		"type='signal',interface='org.freedesktop.Notifications',member='NotificationClosed',eavesdrop='true'",
 	}
 	for _, rule := range rules {
@@ -116,7 +117,7 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 
 		return false
 
-	case dbus.TypeMethodReply:
+	case dbus.TypeMethodReply, dbus.TypeError:
 		replySerial, ok := messageReplySerial(message)
 		if !ok {
 			return false
@@ -127,6 +128,10 @@ func (receiver *controller) handleNotificationMessage(message *dbus.Message) (ch
 			return false
 		}
 		delete(receiver.pendingNotificationCalls, replySerial)
+		if message.Type == dbus.TypeError {
+			receiver.logger.Warn("notification request failed", slog.Uint64("reply_serial", uint64(replySerial)), slog.Int("pending", len(receiver.pendingNotificationCalls)))
+			return false
+		}
 
 		id, ok := notificationID(message.Body)
 		if !ok {
