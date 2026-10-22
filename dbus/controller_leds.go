@@ -11,6 +11,17 @@ import (
 )
 
 func (receiver *controller) updateLED() error {
+	privacySwitchActive := receiver.config != nil && receiver.config.Constraints.DisableOnPrivacySwitch && receiver.privacyModeActive
+	if privacySwitchActive {
+		receiver.logger.Info("LED update", slog.String("requested_stop", "privacy switch active"))
+		if err := receiver.ledController.Stop(); err != nil {
+			return err
+		}
+		receiver.logger.Info("LED update applied", slog.String("state", "stopped"))
+
+		return nil
+	}
+
 	eventEnabled := func(event config.EventType) bool {
 		enabled, configured := receiver.config.Events[event]
 		if !configured {

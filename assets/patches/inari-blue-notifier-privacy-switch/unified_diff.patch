@@ -1,0 +1,138 @@
+--- a/usr/share/jolla-settings/pages/privacyswitch/privacyswitch.qml
++++ b/usr/share/jolla-settings/pages/privacyswitch/privacyswitch.qml
+@@ -1,4 +1,5 @@
+ import QtQuick 2.6
++import Nemo.DBus 2.0
+ import Nemo.FileManager 1.0
+ import Nemo.Configuration 1.0
+ import Sailfish.Silica 1.0
+@@ -7,6 +8,33 @@
+ Page {
+     id: root
+ 
++    property bool notifierServiceRunning: false
++    property bool notifierPrivacySwitchEnabled: false
++    property bool privacySwitchChangePending: false
++    property bool restartAfterPrivacySwitchChange: false
++
++    function refreshNotifierPrivacySwitch() {
++        if (!notifierServiceRunning) {
++            notifierPrivacySwitchEnabled = false;
++            return;
++        }
++
++        notifier.call("GetPrivacySwitchEnabled", [], function(enabled) {
++            notifierPrivacySwitchEnabled = enabled;
++        });
++    }
++
++    function refreshNotifierService() {
++        sessionBus.call("NameHasOwner", [notifier.service], function(running) {
++            notifierServiceRunning = running;
++            if (running) {
++                refreshNotifierPrivacySwitch();
++            } else {
++                notifierPrivacySwitchEnabled = false;
++            }
++        });
++    }
++
+     Column {
+         width: parent.width
+ 
+@@ -106,6 +134,30 @@
+             onClicked: config.enableDefaultVpn = !config.enableDefaultVpn
+         }
+ 
++        TextSwitch {
++            text: "Disable Inari Blue Notifier"
++            automaticCheck: false
++            enabled: root.notifierServiceRunning && !root.privacySwitchChangePending
++            checked: root.notifierPrivacySwitchEnabled
++            onClicked: {
++                root.privacySwitchChangePending = true;
++                root.restartAfterPrivacySwitchChange = true;
++                privacySwitchChangeTimeout.restart();
++
++                notifier.call("SetPrivacySwitchEnabled", [!root.notifierPrivacySwitchEnabled], function() {
++                    root.privacySwitchChangePending = false;
++                    root.restartAfterPrivacySwitchChange = false;
++                    privacySwitchChangeTimeout.stop();
++                    userSystemd.call("RestartUnit", ["inari-blue-notifier-daemon.service", "replace"]);
++                }, function() {
++                    root.privacySwitchChangePending = false;
++                    root.restartAfterPrivacySwitchChange = false;
++                    privacySwitchChangeTimeout.stop();
++                    root.refreshNotifierPrivacySwitch();
++                });
++            }
++        }
++
+         Item {
+             width: 1
+             height: Theme.paddingLarge
+@@ -142,4 +194,64 @@
+         // just some file from appsupport/apkd which we can assume existing if support is installed
+         file: "/usr/share/dbus-1/services/com.jolla.apkd.service"
+     }
++
++    DBusInterface {
++        id: sessionBus
++        service: "org.freedesktop.DBus"
++        path: "/org/freedesktop/DBus"
++        iface: "org.freedesktop.DBus"
++        signalsEnabled: true
++
++        function nameOwnerChanged(name, oldOwner, newOwner) {
++            if (name !== notifier.service) {
++                return;
++            }
++
++            root.notifierServiceRunning = newOwner !== "";
++            if (root.notifierServiceRunning) {
++                root.refreshNotifierPrivacySwitch();
++            } else {
++                root.notifierPrivacySwitchEnabled = false;
++            }
++        }
++    }
++
++    DBusInterface {
++        id: notifier
++        service: "dev.rikudou.InariBlueNotifier"
++        path: "/dev/rikudou/InariBlueNotifier"
++        iface: "dev.rikudou.InariBlueNotifier"
++        signalsEnabled: true
++
++        function privacySwitchEnabledChanged(enabled) {
++            root.notifierPrivacySwitchEnabled = enabled;
++            root.privacySwitchChangePending = false;
++            privacySwitchChangeTimeout.stop();
++
++            if (root.restartAfterPrivacySwitchChange) {
++                root.restartAfterPrivacySwitchChange = false;
++                userSystemd.call("RestartUnit", ["inari-blue-notifier-daemon.service", "replace"]);
++            }
++        }
++    }
++
++    DBusInterface {
++        id: userSystemd
++        service: "org.freedesktop.systemd1"
++        path: "/org/freedesktop/systemd1"
++        iface: "org.freedesktop.systemd1.Manager"
++    }
++
++    Timer {
++        id: privacySwitchChangeTimeout
++        interval: 5000
++        repeat: false
++        onTriggered: {
++            root.privacySwitchChangePending = false;
++            root.restartAfterPrivacySwitchChange = false;
++            root.refreshNotifierPrivacySwitch();
++        }
++    }
++
++    Component.onCompleted: refreshNotifierService();
+ }

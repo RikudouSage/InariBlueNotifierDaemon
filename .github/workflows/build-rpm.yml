@@ -32,6 +32,7 @@ jobs:
           fi
 
           sed -i -E "s/^Version:[[:space:]]+.*/Version:        ${version}/" rpm/inari-blue-notifier-daemon.spec
+          sed -i -E "s/(\"version\":[[:space:]]*\")[^\"]*(\")/\1${version}\2/" assets/patches/inari-blue-notifier-privacy-switch/patch.json
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Run tests

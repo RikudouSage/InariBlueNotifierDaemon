@@ -1,0 +1,10 @@
+{
+  "author": "Rikudou_Sennin",
+  "name": "inari-blue-notifier-privacy-switch",
+  "display_name": "Inari Blue Notifier privacy switch",
+  "version": "1.0.0",
+  "category": "settings",
+  "description": "Adds an Inari Blue Notifier option to the Privacy switch settings page.",
+  "sources": "https://github.com/RikudouSage/InariBlueNotifier",
+  "compatible": ["5.2.0.20"]
+}

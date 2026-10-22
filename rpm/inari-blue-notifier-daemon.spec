@@ -33,6 +33,8 @@ install -Dpm 0644 assets/inari-blue-notifier-daemon.service %{buildroot}%{_useru
 install -Dpm 0644 assets/inari-blue-notifier-contacts.service %{buildroot}%{_userunitdir}/%{name}-contacts.service
 install -Dpm 0644 assets/inari-blue-notifier-contacts.desktop %{buildroot}%{_datadir}/applications/inari-blue-notifier-contacts.desktop
 install -Dpm 0644 assets/InariBlueNotifierDaemonContactAuth.permission %{buildroot}%{_sysconfdir}/sailjail/permissions/InariBlueNotifierDaemonContactAuth.permission
+install -Dpm 0644 assets/patches/inari-blue-notifier-privacy-switch/patch.json %{buildroot}%{_datadir}/patchmanager/patches/inari-blue-notifier-privacy-switch/patch.json
+install -Dpm 0644 assets/patches/inari-blue-notifier-privacy-switch/unified_diff.patch %{buildroot}%{_datadir}/patchmanager/patches/inari-blue-notifier-privacy-switch/unified_diff.patch
 
 %post
 systemctl reload-or-try-restart symbiosis.service || :
@@ -63,3 +65,4 @@ fi
 %{_userunitdir}/%{name}-contacts.service
 %{_datadir}/applications/inari-blue-notifier-contacts.desktop
 %config %{_sysconfdir}/sailjail/permissions/InariBlueNotifierDaemonContactAuth.permission
+%{_datadir}/patchmanager/patches/inari-blue-notifier-privacy-switch

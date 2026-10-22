@@ -150,6 +150,28 @@ func TestUpdateLEDAppliesCallPattern(t *testing.T) {
 	}
 }
 
+func TestUpdateLEDStopsWhenPrivacySwitchIsActive(t *testing.T) {
+	ledController := &recordingLEDController{}
+	receiver := &controller{
+		logger:            config.NewNilLogger(),
+		ledController:     ledController,
+		privacyModeActive: true,
+		config: &config.Config{
+			CallPattern: patterns.SlowBlink,
+			Constraints: config.Constraints{DisableOnPrivacySwitch: true},
+		},
+		incomingCalls: map[dbus.ObjectPath]bool{"/calls/one": false},
+		now:           time.Now,
+	}
+
+	if err := receiver.updateLED(); err != nil {
+		t.Fatalf("update LED: %v", err)
+	}
+	if !ledController.stopped || ledController.plays != 0 {
+		t.Fatalf("privacy switch result: stopped=%t plays=%d, want stopped with no pattern", ledController.stopped, ledController.plays)
+	}
+}
+
 func TestUpdateLEDAppliesFavouriteCallPattern(t *testing.T) {
 	normal := patterns.SlowBlink
 	favourite := patterns.RapidBlink

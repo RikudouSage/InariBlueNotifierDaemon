@@ -46,9 +46,38 @@ func TestExternalControllerExportsExpectedDBusMethods(t *testing.T) {
 		}
 	}
 
-	want := []string{"GetKnockStatus", "PlayPattern", "PlayPatternJSON", "Stop"}
+	want := []string{"GetKnockStatus", "GetPrivacySwitchEnabled", "PlayPattern", "PlayPatternJSON", "SetPrivacySwitchEnabled", "Stop"}
 	if !slices.Equal(exported, want) {
 		t.Fatalf("D-Bus methods = %v, want %v", exported, want)
+	}
+}
+
+func TestPrivacySwitchSettingCanBeReadAndPersisted(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configuration, err := config.New()
+	if err != nil {
+		t.Fatalf("create configuration: %v", err)
+	}
+	receiver := NewExternalController(&fakeExternalLEDController{}, config.NewNilLogger(), configuration)
+
+	enabled, dbusErr := receiver.GetPrivacySwitchEnabled()
+	if dbusErr != nil || enabled {
+		t.Fatalf("initial privacy-switch setting = %t, err = %v; want false and no error", enabled, dbusErr)
+	}
+	if dbusErr := receiver.SetPrivacySwitchEnabled(true); dbusErr != nil {
+		t.Fatalf("enable privacy switch: %v", dbusErr)
+	}
+	enabled, dbusErr = receiver.GetPrivacySwitchEnabled()
+	if dbusErr != nil || !enabled {
+		t.Fatalf("updated privacy-switch setting = %t, err = %v; want true and no error", enabled, dbusErr)
+	}
+
+	reloaded, err := config.New()
+	if err != nil {
+		t.Fatalf("reload configuration: %v", err)
+	}
+	if !reloaded.Constraints.DisableOnPrivacySwitch {
+		t.Fatal("privacy-switch setting was not persisted")
 	}
 }
 
@@ -68,7 +97,7 @@ func TestPlayPatternJSONTakesSingleStringArgument(t *testing.T) {
 
 func TestPlayPatternJSONDecodesAllFields(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	err := receiver.PlayPatternJSON(`{
 		"name": "custom",
@@ -106,7 +135,7 @@ func TestPlayPatternJSONDecodesAllFields(t *testing.T) {
 
 func TestPlayPatternJSONLeavesOmittedFieldsZero(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON(`{"name":"minimal"}`); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -120,7 +149,7 @@ func TestPlayPatternJSONLeavesOmittedFieldsZero(t *testing.T) {
 
 func TestPlayPatternJSONAcceptsEmptyChannels(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON(`{"name":"all","channels":[]}`); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -133,7 +162,7 @@ func TestPlayPatternJSONAcceptsEmptyChannels(t *testing.T) {
 
 func TestPlayPatternJSONAcceptsBase64Channels(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON(`{"name":"encoded","channels":"AQI="}`); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -146,7 +175,7 @@ func TestPlayPatternJSONAcceptsBase64Channels(t *testing.T) {
 
 func TestPlayPatternJSONPassesNullThroughAsEmptyPattern(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON(`null`); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -159,7 +188,7 @@ func TestPlayPatternJSONPassesNullThroughAsEmptyPattern(t *testing.T) {
 
 func TestPlayPatternJSONAcceptsSurroundingWhitespace(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON("\n\t  {\"name\":\"padded\"}  \n"); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -172,7 +201,7 @@ func TestPlayPatternJSONAcceptsSurroundingWhitespace(t *testing.T) {
 
 func TestPlayPatternJSONAcceptsBoundaryByteValues(t *testing.T) {
 	ledController := &fakeExternalLEDController{}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	if err := receiver.PlayPatternJSON(`{"name":"edges","repeat":255,"brightness":0,"channels":[0,255]}`); err != nil {
 		t.Fatalf("play pattern JSON: %v", err)
@@ -203,7 +232,7 @@ func TestPlayPatternJSONRoundTripsBuiltInPatterns(t *testing.T) {
 			}
 
 			ledController := &fakeExternalLEDController{}
-			receiver := NewExternalController(ledController, config.NewNilLogger())
+			receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 			if err := receiver.PlayPatternJSON(string(encoded)); err != nil {
 				t.Fatalf("play pattern JSON %s: %v", encoded, err)
@@ -250,7 +279,7 @@ func TestPlayPatternJSONRejectsInvalidInput(t *testing.T) {
 	for name, payload := range cases {
 		t.Run(name, func(t *testing.T) {
 			ledController := &fakeExternalLEDController{}
-			receiver := NewExternalController(ledController, config.NewNilLogger())
+			receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 			err := receiver.PlayPatternJSON(payload)
 			if err == nil {
@@ -267,7 +296,7 @@ func TestPlayPatternJSONRejectsInvalidInput(t *testing.T) {
 }
 
 func TestPlayPatternJSONReportsDecodeErrorDetails(t *testing.T) {
-	receiver := NewExternalController(&fakeExternalLEDController{}, config.NewNilLogger())
+	receiver := NewExternalController(&fakeExternalLEDController{}, config.NewNilLogger(), nil)
 
 	err := receiver.PlayPatternJSON(`{"name":"a","brigthness":10}`)
 	if err == nil {
@@ -280,7 +309,7 @@ func TestPlayPatternJSONReportsDecodeErrorDetails(t *testing.T) {
 
 func TestPlayPatternJSONPropagatesControllerError(t *testing.T) {
 	ledController := &fakeExternalLEDController{err: errors.New("device unplugged")}
-	receiver := NewExternalController(ledController, config.NewNilLogger())
+	receiver := NewExternalController(ledController, config.NewNilLogger(), nil)
 
 	err := receiver.PlayPatternJSON(`{"name":"a"}`)
 	if err == nil {
@@ -298,7 +327,7 @@ func TestPlayPatternJSONPropagatesControllerError(t *testing.T) {
 }
 
 func TestKnockStatusTracksStateAndFailure(t *testing.T) {
-	receiver := NewExternalController(&fakeExternalLEDController{}, config.NewNilLogger())
+	receiver := NewExternalController(&fakeExternalLEDController{}, config.NewNilLogger(), nil)
 	status, active, message, err := receiver.GetKnockStatus()
 	if err != nil || status != KnockDisabled || active || message != "" {
 		t.Fatalf("initial status = %q active=%t message=%q err=%v", status, active, message, err)
