@@ -21,13 +21,13 @@
 +            return;
 +        }
 +
-+        notifier.typedCall("GetPrivacySwitchEnabled", [], function(enabled) {
++        notifier.call("GetPrivacySwitchEnabled", [], function(enabled) {
 +            notifierPrivacySwitchEnabled = enabled;
 +        });
 +    }
 +
 +    function refreshNotifierService() {
-+        sessionBus.typedCall("NameHasOwner", [notifier.service], function(running) {
++        sessionBus.call("NameHasOwner", [notifier.service], function(running) {
 +            notifierServiceRunning = running;
 +            if (running) {
 +                refreshNotifierPrivacySwitch();
@@ -40,7 +40,7 @@
      Column {
          width: parent.width
  
-@@ -106,6 +134,29 @@
+@@ -106,6 +134,30 @@
              onClicked: config.enableDefaultVpn = !config.enableDefaultVpn
          }
  
@@ -54,23 +54,24 @@
 +                root.restartAfterPrivacySwitchChange = true;
 +                privacySwitchChangeTimeout.restart();
 +
-+                if (!notifier.typedCall("SetPrivacySwitchEnabled", [!root.notifierPrivacySwitchEnabled], function() {}, function() {
++                notifier.call("SetPrivacySwitchEnabled", [!root.notifierPrivacySwitchEnabled], function() {
++                    root.privacySwitchChangePending = false;
++                    root.restartAfterPrivacySwitchChange = false;
++                    privacySwitchChangeTimeout.stop();
++                    userSystemd.call("RestartUnit", ["inari-blue-notifier-daemon.service", "replace"]);
++                }, function() {
 +                    root.privacySwitchChangePending = false;
 +                    root.restartAfterPrivacySwitchChange = false;
 +                    privacySwitchChangeTimeout.stop();
 +                    root.refreshNotifierPrivacySwitch();
-+                })) {
-+                    root.privacySwitchChangePending = false;
-+                    root.restartAfterPrivacySwitchChange = false;
-+                    privacySwitchChangeTimeout.stop();
-+                }
++                });
 +            }
 +        }
 +
          Item {
              width: 1
              height: Theme.paddingLarge
-@@ -142,4 +193,64 @@
+@@ -142,4 +194,64 @@
          // just some file from appsupport/apkd which we can assume existing if support is installed
          file: "/usr/share/dbus-1/services/com.jolla.apkd.service"
      }
