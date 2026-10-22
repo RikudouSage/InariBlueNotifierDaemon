@@ -46,8 +46,9 @@ type controller struct {
 	done       chan struct{}
 
 	// incomingCalls maps each ringing call to whether its caller is a favourite.
-	incomingCalls map[dbus.ObjectPath]bool
-	knockActive   bool
+	incomingCalls     map[dbus.ObjectPath]bool
+	knockActive       bool
+	privacyModeActive bool
 
 	activeNotifications      map[uint32]trackedNotification
 	pendingNotificationCalls map[uint32]trackedNotification
@@ -154,8 +155,31 @@ func (receiver *controller) Start() error {
 		}
 	}
 
+	var privacySwitchSignals chan *dbus.Signal
+	var privacySwitchMatch []dbus.MatchOption
+	if receiver.config.Constraints.DisableOnPrivacySwitch {
+		var privacySwitchErr error
+		privacySwitchSignals, privacySwitchMatch, privacySwitchErr = receiver.subscribePrivacySwitch()
+		if privacySwitchErr != nil {
+			if unlockSignals != nil {
+				receiver.systemConnection.RemoveSignal(unlockSignals)
+				_ = receiver.systemConnection.RemoveMatchSignal(unlockMatch...)
+			}
+
+			_ = receiver.connection.RemoveMatchSignal(matchOptions...)
+			receiver.connection.RemoveSignal(signals)
+
+			return privacySwitchErr
+		}
+	}
+
 	notificationMessages, notificationConnection, err := receiver.startNotificationMonitor()
 	if err != nil {
+		if privacySwitchSignals != nil {
+			receiver.connection.RemoveSignal(privacySwitchSignals)
+			_ = receiver.connection.RemoveMatchSignal(privacySwitchMatch...)
+		}
+
 		if unlockSignals != nil {
 			receiver.systemConnection.RemoveSignal(unlockSignals)
 			_ = receiver.systemConnection.RemoveMatchSignal(unlockMatch...)
@@ -186,6 +210,12 @@ func (receiver *controller) Start() error {
 		clearKnock := receiver.clearKnock
 		watchers.Go(func() {
 			receiver.watchUnlock(ctx, unlockSignals, unlockMatch, clearKnock)
+		})
+	}
+
+	if privacySwitchSignals != nil {
+		watchers.Go(func() {
+			receiver.watchPrivacySwitch(ctx, privacySwitchSignals, privacySwitchMatch)
 		})
 	}
 
